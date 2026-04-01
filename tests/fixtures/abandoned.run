@@ -1,0 +1,15 @@
+{
+  "start_time": 1004,
+  "win": false,
+  "was_abandoned": true,
+  "killed_by_encounter": "NONE.NONE",
+  "players": [
+    {
+      "character": "CHARACTER.REGENT",
+      "relics": [
+        { "id": "RELIC.STARTER_RELIC" },
+        { "id": "RELIC.NEWS_LEAF" }
+      ]
+    }
+  ]
+}

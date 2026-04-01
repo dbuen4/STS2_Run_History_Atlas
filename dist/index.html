@@ -1,0 +1,467 @@
+<!doctype html><html lang="en"><head><meta charset="utf-8"/><meta name="viewport" content="width=device-width,initial-scale=1"/><title>StS Project Analytics</title><style>:root {
+        --bg: #f2ebe0;
+        --bg-accent: #ead8bb;
+        --panel: rgba(255, 250, 241, 0.92);
+        --panel-border: rgba(111, 76, 45, 0.2);
+        --text: #2e2418;
+        --muted: #695845;
+        --accent: #a3472a;
+        --accent-strong: #742d19;
+        --accent-soft: rgba(163, 71, 42, 0.12);
+        --warning: #8a5d26;
+        --danger: #97352d;
+        --shadow: 0 18px 45px rgba(83, 53, 25, 0.14);
+      }
+
+      * {
+        box-sizing: border-box;
+      }
+
+      body {
+        margin: 0;
+        min-height: 100vh;
+        font-family: "Palatino Linotype", "Book Antiqua", Palatino, serif;
+        color: var(--text);
+        background:
+          radial-gradient(circle at top left, rgba(255, 255, 255, 0.55), transparent 36%),
+          radial-gradient(circle at bottom right, rgba(181, 82, 43, 0.16), transparent 28%),
+          linear-gradient(145deg, var(--bg) 0%, #f7f1e7 45%, var(--bg-accent) 100%);
+      }
+
+      .app-shell {
+        display: grid;
+        grid-template-columns: minmax(240px, 300px) minmax(0, 1fr) minmax(260px, 340px);
+        gap: 18px;
+        padding: 18px;
+      }
+
+      .panel {
+        background: var(--panel);
+        border: 1px solid var(--panel-border);
+        border-radius: 20px;
+        box-shadow: var(--shadow);
+        backdrop-filter: blur(4px);
+      }
+
+      .left-panel,
+      .right-panel {
+        padding: 18px;
+      }
+
+      .canvas-panel {
+        padding: 14px;
+        display: flex;
+        flex-direction: column;
+        min-height: calc(100vh - 36px);
+      }
+
+      .hero {
+        margin-bottom: 20px;
+      }
+
+      .eyebrow {
+        font-size: 0.78rem;
+        letter-spacing: 0.18em;
+        text-transform: uppercase;
+        color: var(--accent);
+        margin: 0 0 8px;
+      }
+
+      h1,
+      h2 {
+        margin: 0;
+        font-weight: 700;
+      }
+
+      h1 {
+        font-size: clamp(1.6rem, 2vw, 2.2rem);
+        line-height: 1.1;
+      }
+
+      .subtitle {
+        margin: 10px 0 0;
+        color: var(--muted);
+        line-height: 1.45;
+      }
+
+      .control-group {
+        margin-top: 18px;
+      }
+
+      .control-group h2,
+      .summary-block h2,
+      .ranking-block h2 {
+        font-size: 1rem;
+        margin-bottom: 12px;
+      }
+
+      .field {
+        display: grid;
+        gap: 8px;
+        margin-bottom: 14px;
+      }
+
+      label {
+        font-size: 0.92rem;
+        font-weight: 700;
+      }
+
+      input,
+      select,
+      button {
+        font: inherit;
+      }
+
+      input,
+      select {
+        width: 100%;
+        border-radius: 12px;
+        border: 1px solid rgba(103, 69, 40, 0.18);
+        padding: 10px 12px;
+        background: rgba(255, 255, 255, 0.82);
+        color: var(--text);
+      }
+
+      button {
+        border: none;
+        border-radius: 999px;
+        padding: 11px 16px;
+        cursor: pointer;
+        transition: transform 150ms ease, box-shadow 150ms ease, background 150ms ease;
+      }
+
+      button:hover:not(:disabled) {
+        transform: translateY(-1px);
+      }
+
+      button:disabled {
+        opacity: 0.6;
+        cursor: wait;
+      }
+
+      .primary-button {
+        background: linear-gradient(135deg, var(--accent) 0%, var(--accent-strong) 100%);
+        color: #fff8f2;
+        box-shadow: 0 10px 24px rgba(116, 45, 25, 0.24);
+      }
+
+      .secondary-button {
+        background: rgba(117, 81, 48, 0.1);
+        color: var(--text);
+      }
+
+      .button-row {
+        display: grid;
+        gap: 10px;
+      }
+
+      .status-pill {
+        display: inline-flex;
+        align-items: center;
+        gap: 8px;
+        margin-top: 14px;
+        padding: 10px 12px;
+        border-radius: 999px;
+        background: var(--accent-soft);
+        color: var(--accent-strong);
+        font-size: 0.92rem;
+      }
+
+      .status-pill::before {
+        content: "";
+        width: 8px;
+        height: 8px;
+        border-radius: 999px;
+        background: currentColor;
+      }
+
+      .canvas-header {
+        display: flex;
+        justify-content: space-between;
+        align-items: flex-start;
+        gap: 16px;
+        padding: 8px 8px 12px;
+      }
+
+      .canvas-meta {
+        color: var(--muted);
+        font-size: 0.95rem;
+        line-height: 1.45;
+        max-width: 44rem;
+      }
+
+      .canvas-wrap {
+        position: relative;
+        flex: 0 0 auto;
+        width: min(100%, calc(100vh - 220px), 920px);
+        aspect-ratio: 1 / 1;
+        min-height: 0;
+        margin: 0 auto;
+        border-radius: 18px;
+        overflow: hidden;
+        border: 1px solid rgba(100, 69, 39, 0.18);
+        background:
+          radial-gradient(circle at 15% 15%, rgba(163, 71, 42, 0.08), transparent 30%),
+          radial-gradient(circle at 85% 82%, rgba(45, 111, 88, 0.08), transparent 28%),
+          linear-gradient(180deg, rgba(255, 253, 248, 0.96), rgba(239, 230, 214, 0.96));
+      }
+
+      canvas {
+        display: block;
+        width: 100%;
+        height: 100%;
+        touch-action: none;
+      }
+
+      .node-label-layer {
+        position: absolute;
+        inset: 0;
+        pointer-events: none;
+        overflow: hidden;
+      }
+
+      .node-label {
+        position: absolute;
+        left: 0;
+        top: 0;
+        transform: translate(-50%, -50%);
+        text-align: center;
+        font-weight: 700;
+        line-height: 1.08;
+        letter-spacing: -0.01em;
+        color: #2b2015;
+        text-shadow:
+          0 1px 0 rgba(255, 255, 255, 0.9),
+          0 0 14px rgba(255, 248, 238, 0.94);
+        background: rgba(255, 250, 241, 0.42);
+        border: 1px solid rgba(112, 83, 56, 0.12);
+        border-radius: 999px;
+        backdrop-filter: blur(2px);
+        box-shadow: 0 4px 14px rgba(88, 58, 32, 0.08);
+        padding: 0.18em 0.42em;
+        max-width: 220px;
+        white-space: normal;
+        overflow-wrap: anywhere;
+      }
+
+      .canvas-overlay {
+        position: absolute;
+        inset: auto 16px 16px auto;
+        padding: 10px 12px;
+        border-radius: 14px;
+        background: rgba(255, 251, 243, 0.92);
+        border: 1px solid rgba(111, 76, 45, 0.16);
+        color: var(--muted);
+        font-size: 0.88rem;
+      }
+
+      .summary-grid {
+        display: grid;
+        grid-template-columns: repeat(2, minmax(0, 1fr));
+        gap: 10px;
+      }
+
+      .summary-card {
+        padding: 12px;
+        border-radius: 16px;
+        background: rgba(255, 255, 255, 0.74);
+        border: 1px solid rgba(114, 78, 43, 0.12);
+      }
+
+      .summary-label {
+        font-size: 0.78rem;
+        text-transform: uppercase;
+        letter-spacing: 0.12em;
+        color: var(--muted);
+      }
+
+      .summary-value {
+        margin-top: 8px;
+        font-size: 1.3rem;
+        font-weight: 700;
+      }
+
+      .warning-list,
+      .legend-list,
+      .ranking-list {
+        list-style: none;
+        padding: 0;
+        margin: 0;
+      }
+
+      .warning-list {
+        display: grid;
+        gap: 10px;
+      }
+
+      .warning-item {
+        padding: 11px 12px;
+        border-radius: 14px;
+        background: rgba(255, 244, 227, 0.84);
+        border: 1px solid rgba(138, 93, 38, 0.18);
+        color: var(--warning);
+        line-height: 1.4;
+      }
+
+      .ranking-list {
+        display: grid;
+        gap: 12px;
+      }
+
+      .legend-note {
+        margin: 0 0 12px;
+        color: var(--muted);
+        font-size: 0.92rem;
+        line-height: 1.45;
+      }
+
+      .legend-header {
+        display: flex;
+        align-items: center;
+        justify-content: space-between;
+        gap: 12px;
+        margin-bottom: 12px;
+      }
+
+      .legend-header h2 {
+        margin-bottom: 0;
+      }
+
+      .legend-nav {
+        display: inline-flex;
+        align-items: center;
+        gap: 8px;
+      }
+
+      .legend-nav-button {
+        width: 34px;
+        height: 34px;
+        padding: 0;
+        border-radius: 12px;
+        display: inline-flex;
+        align-items: center;
+        justify-content: center;
+        font-size: 1rem;
+        line-height: 1;
+      }
+
+      .legend-status {
+        min-width: 70px;
+        text-align: center;
+        font-size: 0.84rem;
+        color: var(--muted);
+      }
+
+      .legend-list {
+        display: grid;
+        gap: 10px;
+      }
+
+      .legend-item {
+        display: flex;
+        align-items: center;
+        gap: 10px;
+        padding: 11px 12px;
+        border-radius: 14px;
+        background: rgba(255, 255, 255, 0.75);
+        border: 1px solid rgba(114, 78, 43, 0.12);
+      }
+
+      .legend-swatch {
+        width: 14px;
+        height: 14px;
+        border-radius: 999px;
+        box-shadow: inset 0 0 0 1px rgba(46, 36, 24, 0.14);
+        flex: 0 0 auto;
+      }
+
+      .legend-label {
+        font-weight: 700;
+      }
+
+      .ranking-item {
+        padding: 12px 12px 13px;
+        border-radius: 16px;
+        background: rgba(255, 255, 255, 0.75);
+        border: 1px solid rgba(114, 78, 43, 0.12);
+      }
+
+      .ranking-line {
+        display: flex;
+        justify-content: space-between;
+        gap: 12px;
+        align-items: baseline;
+      }
+
+      .ranking-label {
+        font-weight: 700;
+        line-height: 1.3;
+      }
+
+      .ranking-value {
+        color: var(--accent-strong);
+        font-weight: 700;
+        white-space: nowrap;
+      }
+
+      .ranking-detail {
+        margin-top: 6px;
+        color: var(--muted);
+        line-height: 1.4;
+        font-size: 0.92rem;
+      }
+
+      .empty-state {
+        color: var(--muted);
+        line-height: 1.55;
+      }
+
+      .support-note {
+        margin-top: 14px;
+        color: var(--muted);
+        font-size: 0.9rem;
+        line-height: 1.5;
+      }
+
+      .error-banner {
+        display: none;
+        margin-top: 14px;
+        padding: 12px 14px;
+        border-radius: 14px;
+        background: rgba(151, 53, 45, 0.1);
+        border: 1px solid rgba(151, 53, 45, 0.18);
+        color: var(--danger);
+        line-height: 1.45;
+      }
+
+      @media (max-width: 1080px) {
+        .app-shell {
+          grid-template-columns: 1fr;
+        }
+
+        .canvas-panel {
+          min-height: auto;
+        }
+
+        .canvas-wrap {
+          width: min(100%, 760px);
+        }
+      }
+
+      @media (max-width: 640px) {
+        .app-shell {
+          padding: 12px;
+        }
+
+        .canvas-header {
+          flex-direction: column;
+        }
+
+        .summary-grid {
+          grid-template-columns: 1fr;
+        }
+
+        .canvas-wrap {
+          width: 100%;
+        }
+      }</style><script defer="defer" src="main.js"></script></head><body><div class="app-shell"><aside class="panel left-panel"><div class="hero"><p class="eyebrow">Slay The Spire 2</p><h1>Run History Atlas</h1><p class="subtitle">Load a save-history folder, choose the graph you want to inspect, and generate a view with the node limits that fit your archive.</p></div><section class="control-group"><h2>Data</h2><div class="button-row"><button id="load-folder-btn" class="primary-button">Load Saves Folder</button> <button id="load-history-files-btn" class="secondary-button">Load History Files</button> <button id="load-progress-file-btn" class="secondary-button">Add progress.save</button> <button id="reset-camera-btn" class="secondary-button">Reset Camera</button></div><input id="history-files-input" type="file" accept=".run" multiple="multiple" hidden/> <input id="progress-file-input" type="file" accept=".save" hidden/><div id="load-status" class="status-pill">Waiting for a profile saves folder.</div><p class="support-note">If Chromium blocks the save folder because it lives in a protected AppData path, load the `.run` files from `history` first, then add `progress.save`.</p><div id="error-banner" class="error-banner"></div></section><section class="control-group"><h2>Graph Generator</h2><div class="field"><label for="view-select">Graph type</label> <select id="view-select"><option value="profileOverview">Profile Overview</option><option value="bossDeaths">Boss Deaths</option><option value="relicWinRate">Relic Win Rate</option><option value="cardStats">Card Stats</option><option value="encounterStats">Encounter Stats</option></select></div><div class="field"><label for="top-n-input">Max nodes</label> <input id="top-n-input" type="number" min="3" max="24" step="1" value="12"/></div><div class="field"><label for="min-support-input">Minimum node support</label> <input id="min-support-input" type="number" min="1" max="30" step="1" value="5"/></div><button id="generate-graph-btn" class="primary-button">Generate Graph</button><p class="support-note" id="control-note">Choose a graph type, set the node limits, then click Generate Graph.</p></section></aside><main class="panel canvas-panel"><div class="canvas-header"><div><p class="eyebrow" id="graph-eyebrow">Impact Graph</p><h2 id="graph-title">Load data to begin</h2></div><div class="canvas-meta" id="graph-subtitle">Load data, choose a graph type and node limits, then click Generate Graph.</div></div><div class="canvas-wrap"><canvas id="webgpu-canvas"></canvas><div id="node-label-layer" class="node-label-layer" aria-hidden="true"></div><div class="canvas-overlay">Drag to pan. Scroll to zoom. Reset Camera restores the graph fit.</div></div></main><aside class="panel right-panel"><section class="summary-block"><h2>Summary</h2><div id="summary-grid" class="summary-grid"><div class="summary-card"><div class="summary-label">Status</div><div class="summary-value">No Data</div></div></div></section><section id="node-legend-section" class="summary-block" style="margin-top: 18px;" hidden><div class="legend-header"><h2>Node Legend</h2><div class="legend-nav" aria-label="Legend navigation"><button id="legend-up-btn" class="secondary-button legend-nav-button" type="button" aria-label="Show previous legend entries">&uarr;</button> <span id="legend-page-status" class="legend-status" aria-live="polite">0 of 0</span> <button id="legend-down-btn" class="secondary-button legend-nav-button" type="button" aria-label="Show next legend entries">&darr;</button></div></div><p id="node-legend-note" class="legend-note">Loaded graph nodes will appear here.</p><ul id="node-legend" class="legend-list"><li class="legend-item empty-state">Loaded graph nodes will appear here with their current colors.</li></ul></section><section class="summary-block" style="margin-top: 18px;"><h2>Warnings</h2><ul id="warning-list" class="warning-list"><li class="warning-item">Malformed or missing files will appear here after a load.</li></ul></section><section class="ranking-block" style="margin-top: 18px;"><h2>Rankings</h2><ul id="ranking-list" class="ranking-list"><li class="ranking-item empty-state">Load a folder to see the ranked labels and exact values behind the graph.</li></ul></section></aside></div></body></html>

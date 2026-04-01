@@ -1,0 +1,16 @@
+{
+  "start_time": 1001,
+  "win": true,
+  "was_abandoned": false,
+  "killed_by_encounter": "NONE.NONE",
+  "players": [
+    {
+      "character": "CHARACTER.NECROBINDER",
+      "relics": [
+        { "id": "RELIC.BOUND_PHYLACTERY" },
+        { "id": "RELIC.FRAGRANT_MUSHROOM" },
+        { "id": "RELIC.CLOAK_CLASP" }
+      ]
+    }
+  ]
+}

@@ -1,0 +1,15 @@
+{
+  "start_time": 1002,
+  "win": false,
+  "was_abandoned": false,
+  "killed_by_encounter": "ENCOUNTER.KNOWLEDGE_DEMON_BOSS",
+  "players": [
+    {
+      "character": "CHARACTER.IRONCLAD",
+      "relics": [
+        { "id": "RELIC.BURNING_BLOOD" },
+        { "id": "RELIC.AKABEKO" }
+      ]
+    }
+  ]
+}

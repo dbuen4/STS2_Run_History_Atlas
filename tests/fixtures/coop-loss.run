@@ -1,0 +1,23 @@
+{
+  "start_time": 1003,
+  "win": false,
+  "was_abandoned": false,
+  "killed_by_encounter": "ENCOUNTER.DOORMAKER_BOSS",
+  "players": [
+    {
+      "character": "CHARACTER.SILENT",
+      "relics": [
+        { "id": "RELIC.RING_OF_THE_SNAKE" },
+        { "id": "RELIC.ANCHOR" },
+        { "id": "RELIC.CLOAK_CLASP" }
+      ]
+    },
+    {
+      "character": "CHARACTER.DEFECT",
+      "relics": [
+        { "id": "RELIC.CRACKED_CORE" },
+        { "id": "RELIC.DATA_DISK" }
+      ]
+    }
+  ]
+}
