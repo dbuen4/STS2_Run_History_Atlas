@@ -24,6 +24,7 @@ interface LabelBinding {
 }
 
 const SHOW_NODE_LABELS = false;
+const ENABLE_EDGE_RENDERING = false;
 
 class ForceDirectedLayout {
   private readonly adjacencyMatrixBuffer: GPUBuffer;
@@ -206,6 +207,16 @@ export class WebGpuGraphRenderer {
     }
 
     this.device = await adapter.requestDevice();
+    this.device.addEventListener("uncapturederror", (event) => {
+      const message = event.error?.message ?? "Unknown WebGPU runtime error.";
+      this.noWebGpuMessage(`WebGPU runtime error: ${message}`);
+      console.error("[WebGPU uncaptured error]", event.error);
+    });
+    this.device.lost.then((info) => {
+      const reason = info.reason ? `${info.reason}: ` : "";
+      this.noWebGpuMessage(`WebGPU device was lost. ${reason}${info.message}`);
+      console.error("[WebGPU device lost]", info);
+    });
     this.context = this.canvas.getContext("webgpu") as GPUCanvasContext | null;
     this.format = navigator.gpu.getPreferredCanvasFormat();
 
@@ -508,6 +519,12 @@ export class WebGpuGraphRenderer {
 
     this.graphVersion += 1;
     this.nodeReadbackPending = false;
+    console.info("[renderer] setGraph", {
+      view: graph.view,
+      nodes: graph.nodes.length,
+      edges: graph.edges.length,
+      edgeRenderingEnabled: ENABLE_EDGE_RENDERING,
+    });
 
     if (graph.nodes.length === 0) {
       this.homeCamera = { x: 0, y: 0, zoom: 1 };
@@ -594,13 +611,21 @@ export class WebGpuGraphRenderer {
 
     this.nodeCount = graph.nodes.length;
     this.edgeCount = graph.edges.length;
-    this.layout = new ForceDirectedLayout(this.device, this.nodeBuffer, graph.nodes, graph.edges);
-    this.layout.reset(this.device);
-    this.layoutActive = true;
     this.frameCount = 0;
-    this.autoFitEnabled = true;
-    this.autoFitWarmupFrames = graph.edges.length === 0 ? 2 : 6;
-    this.autoFitReadbacksRemaining = graph.edges.length === 0 ? 12 : 24;
+    if (graph.edges.length === 0) {
+      this.layout = new ForceDirectedLayout(this.device, this.nodeBuffer, graph.nodes, graph.edges);
+      this.layout.reset(this.device);
+      this.layoutActive = true;
+      this.autoFitEnabled = true;
+      this.autoFitWarmupFrames = 2;
+      this.autoFitReadbacksRemaining = 12;
+    } else {
+      this.layout = null;
+      this.layoutActive = false;
+      this.autoFitEnabled = false;
+      this.autoFitWarmupFrames = 0;
+      this.autoFitReadbacksRemaining = 0;
+    }
     this.renderLabels();
   }
 
@@ -651,7 +676,7 @@ export class WebGpuGraphRenderer {
       ],
     });
 
-    if (this.bindGroup && this.edgeCount > 0) {
+    if (ENABLE_EDGE_RENDERING && this.bindGroup && this.edgeCount > 0) {
       pass.setPipeline(this.edgePipeline);
       pass.setBindGroup(0, this.bindGroup);
       pass.draw(2, this.edgeCount);

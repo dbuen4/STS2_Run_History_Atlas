@@ -382,6 +382,14 @@ function buildAndRenderCurrentView(state: AppState, renderer: WebGpuGraphRendere
     topN: getNumericInputValue("top-n-input", DEFAULT_TOP_N),
     minSupport: getNumericInputValue("min-support-input", DEFAULT_MIN_SUPPORT),
   });
+  console.info("[graph] build", {
+    view,
+    parsedRuns: loadResult.runs.length,
+    hasProgress: loadResult.progress !== null,
+    nodes: graph.nodes.length,
+    edges: graph.edges.length,
+    warnings: [...loadResult.warnings, ...graph.warnings],
+  });
 
   const combinedWarnings = [...loadResult.warnings, ...graph.warnings];
   renderGraphHeader(`${graph.nodes.length} nodes · ${graph.edges.length} edges`, graph.title, graph.subtitle);
