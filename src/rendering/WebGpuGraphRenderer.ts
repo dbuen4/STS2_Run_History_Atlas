@@ -25,6 +25,7 @@ interface LabelBinding {
 
 const SHOW_NODE_LABELS = false;
 const ENABLE_EDGE_RENDERING = false;
+const NODE_STRIDE_FLOATS = 8;
 
 class ForceDirectedLayout {
   private readonly adjacencyMatrixBuffer: GPUBuffer;
@@ -371,7 +372,7 @@ export class WebGpuGraphRenderer {
     const sizeBasis = Math.min(width, height);
 
     for (const binding of this.labelBindings) {
-      const offset = binding.nodeIndex * 8;
+      const offset = binding.nodeIndex * NODE_STRIDE_FLOATS;
       const worldX = this.nodeSnapshot[offset];
       const worldY = this.nodeSnapshot[offset + 1];
       const radius = this.nodeSnapshot[offset + 2];
@@ -412,7 +413,7 @@ export class WebGpuGraphRenderer {
     let maxY = Number.NEGATIVE_INFINITY;
 
     for (let index = 0; index < nodeCount; index += 1) {
-      const offset = index * 8;
+      const offset = index * NODE_STRIDE_FLOATS;
       const worldX = nodeData[offset];
       const worldY = nodeData[offset + 1];
       const layoutRadius = nodeData[offset + 3];
@@ -546,9 +547,9 @@ export class WebGpuGraphRenderer {
     }
 
     const positions = getInitialPositions(graph.nodes);
-    const nodeData = new Float32Array(graph.nodes.length * 8);
+    const nodeData = new Float32Array(graph.nodes.length * NODE_STRIDE_FLOATS);
     graph.nodes.forEach((node, index) => {
-      const offset = index * 8;
+      const offset = index * NODE_STRIDE_FLOATS;
       nodeData[offset] = positions[index].x;
       nodeData[offset + 1] = positions[index].y;
       nodeData[offset + 2] = node.radius;
@@ -563,7 +564,7 @@ export class WebGpuGraphRenderer {
     this.createLabels(graph.nodes);
 
     const nodeIndexById = new Map(graph.nodes.map((node, index) => [node.id, index]));
-    const edgeData = new Float32Array(graph.edges.length * 4);
+    const edgeData = new Float32Array(graph.edges.length * 8);
     graph.edges.forEach((edge, index) => {
       const start = nodeIndexById.get(edge.sourceId);
       const end = nodeIndexById.get(edge.targetId);
@@ -571,11 +572,17 @@ export class WebGpuGraphRenderer {
         return;
       }
 
-      const offset = index * 4;
-      edgeData[offset] = start;
-      edgeData[offset + 1] = end;
-      edgeData[offset + 2] = edge.weight;
-      edgeData[offset + 3] = 0;
+      const sourceOffset = start * NODE_STRIDE_FLOATS;
+      const targetOffset = end * NODE_STRIDE_FLOATS;
+      const offset = index * 8;
+      edgeData[offset] = nodeData[sourceOffset];
+      edgeData[offset + 1] = nodeData[sourceOffset + 1];
+      edgeData[offset + 2] = nodeData[targetOffset];
+      edgeData[offset + 3] = nodeData[targetOffset + 1];
+      edgeData[offset + 4] = (nodeData[sourceOffset + 4] + nodeData[targetOffset + 4]) * 0.4;
+      edgeData[offset + 5] = (nodeData[sourceOffset + 5] + nodeData[targetOffset + 5]) * 0.4;
+      edgeData[offset + 6] = (nodeData[sourceOffset + 6] + nodeData[targetOffset + 6]) * 0.4;
+      edgeData[offset + 7] = clamp(0.18 + edge.weight * 0.08, 0.18, 0.46);
     });
 
     this.nodeBuffer = this.device.createBuffer({

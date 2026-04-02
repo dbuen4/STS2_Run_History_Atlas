@@ -204,7 +204,7 @@ function getLegendNote(graph: GraphDataset): string {
     return "Profile Overview keeps the five main class colors fixed in the legend.";
   }
 
-  return `Legend shows the current view's top ranked non-class nodes, ${LEGEND_VISIBLE_COUNT} at a time.`;
+  return `Legend shows the current view's top ranked nodes, ${LEGEND_VISIBLE_COUNT} at a time.`;
 }
 
 function renderNodeLegend(state: AppState): void {

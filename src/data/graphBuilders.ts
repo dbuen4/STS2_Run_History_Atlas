@@ -224,22 +224,6 @@ function buildBossGraph(runs: RunSummary[], topN: number, hasProgress: boolean):
     );
   }
 
-  const maxCharacterDeaths = Math.max(...characterDeathCounts.values(), 1);
-  const characterNodes = sortByNumberThenLabel(
-    [...characterDeathCounts.entries()].map(([character, count]) => ({ character, count })),
-    (entry) => entry.count,
-    (entry) => entry.character
-  ).map((entry) =>
-    withLayoutRadius({
-      id: entry.character,
-      label: humanizeToken(entry.character),
-      kind: "character" as const,
-      value: entry.count,
-      radius: squareRootRadius(entry.count, maxCharacterDeaths, 0.055, 0.12),
-      color: getCharacterColor(entry.character, blendColor(COLORS.characterLow, COLORS.characterHigh, 0.38)),
-    })
-  );
-
   const bossNodes = rankedBosses.map((entry) =>
     makeCountNode(
       entry.encounter,
@@ -269,8 +253,8 @@ function buildBossGraph(runs: RunSummary[], topN: number, hasProgress: boolean):
     view: "bossDeaths",
     title: "Boss and Elite Deaths",
     subtitle:
-      "Boss nodes grow with total kills, and each edge shows which character most often ran into that wall.",
-    nodes: [...characterNodes, ...bossNodes],
+      "Boss nodes grow with total kills and focus on the encounters that most often ended a run.",
+    nodes: bossNodes,
     edges,
     ranking,
     summaryCards: [
@@ -356,30 +340,6 @@ function buildRelicGraph(
 
   const maxRelicWinRate = Math.max(...rankedRelics.map((entry) => entry.winRate), 0.01);
   const completedRuns = runs.filter((run) => !run.wasAbandoned);
-  const characterWinCounts = new Map<string, number>();
-
-  for (const run of completedRuns) {
-    if (run.win) {
-      characterWinCounts.set(run.character, (characterWinCounts.get(run.character) ?? 0) + 1);
-    }
-  }
-
-  const maxCharacterWins = Math.max(...characterWinCounts.values(), 1);
-  const characterNodes = sortByNumberThenLabel(
-    [...characterWinCounts.entries()].map(([character, count]) => ({ character, count })),
-    (entry) => entry.count,
-    (entry) => entry.character
-  ).map((entry) =>
-    withLayoutRadius({
-      id: entry.character,
-      label: humanizeToken(entry.character),
-      kind: "character" as const,
-      value: entry.count,
-      radius: squareRootRadius(entry.count, maxCharacterWins, 0.055, 0.12),
-      color: getCharacterColor(entry.character, blendColor(COLORS.characterLow, COLORS.characterHigh, 0.75)),
-    })
-  );
-
   const relicNodes = rankedRelics.map((stat) =>
     withLayoutRadius({
       id: stat.id,
@@ -415,8 +375,8 @@ function buildRelicGraph(
     view: "relicWinRate",
     title: "Relic Win Rate",
     subtitle:
-      "Starter relics are removed, relic nodes grow with win rate, and edges track winning appearances by character.",
-    nodes: [...characterNodes, ...relicNodes],
+      "Starter relics are removed, and relic nodes grow with win rate across qualifying completed runs.",
+    nodes: relicNodes,
     edges: [...edgeMap.values()],
     ranking,
     summaryCards: [
@@ -696,30 +656,12 @@ function buildEncounterStatsGraph(loadResult: LoadResult, topN: number): GraphDa
   }
 
   const maxEncounterLosses = Math.max(...encounterAggregates.map((stat) => stat.losses), 1);
-  const characterLosses = new Map<string, number>();
   const edgeMap = new Map<string, GraphEdge>();
   for (const encounter of encounterAggregates) {
     for (const [character, losses] of encounter.characterLosses) {
-      characterLosses.set(character, (characterLosses.get(character) ?? 0) + losses);
       addEdge(edgeMap, character, encounter.id, losses);
     }
   }
-
-  const maxCharacterLosses = Math.max(...characterLosses.values(), 1);
-  const characterNodes = sortByNumberThenLabel(
-    [...characterLosses.entries()].map(([character, count]) => ({ character, count })),
-    (entry) => entry.count,
-    (entry) => entry.character
-  ).map((entry) =>
-    withLayoutRadius({
-      id: entry.character,
-      label: humanizeToken(entry.character),
-      kind: "character" as const,
-      value: entry.count,
-      radius: squareRootRadius(entry.count, maxCharacterLosses, 0.055, 0.12),
-      color: getCharacterColor(entry.character, blendColor(COLORS.characterLow, COLORS.characterHigh, 0.28)),
-    })
-  );
 
   const encounterNodes = encounterAggregates.map((stat) =>
     withLayoutRadius({
@@ -746,8 +688,8 @@ function buildEncounterStatsGraph(loadResult: LoadResult, topN: number): GraphDa
     view: "encounterStats",
     title: "Encounter Stats",
     subtitle:
-      "Encounter nodes come from progress.save fight aggregates, so this view surfaces broader recurring threats beyond final run deaths.",
-    nodes: [...characterNodes, ...encounterNodes],
+      "Encounter nodes come from progress.save fight aggregates and focus on the fights with the most tracked losses.",
+    nodes: encounterNodes,
     edges: [...edgeMap.values()],
     ranking,
     summaryCards: [

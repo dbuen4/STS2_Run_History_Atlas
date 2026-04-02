@@ -46,12 +46,7 @@ describe("graphBuilders", () => {
     { fileName: "progress.save", text: readFixture("progress.save") },
   ]);
 
-  it("uses fixed character colors across graphs that include classes", () => {
-    const encounterGraph = build("encounterStats", loadResult, { topN: 5, minSupport: 2 });
-    const necrobinderNode = encounterGraph.nodes.find((node) => node.id === "CHARACTER.NECROBINDER");
-
-    expect(necrobinderNode?.color).toEqual(getCharacterColor("CHARACTER.NECROBINDER"));
-
+  it("uses fixed character colors in profile overview", () => {
     const profileGraph = build("profileOverview", loadResult);
     const ironcladNode = profileGraph.nodes.find((node) => node.id === "CHARACTER.IRONCLAD");
 
@@ -144,12 +139,11 @@ describe("graphBuilders", () => {
     expect(graph.nodes.some((node) => node.label === "Knowledge Demon Boss")).toBe(true);
     expect(graph.nodes.some((node) => node.label === "Doormaker Boss")).toBe(true);
     expect(graph.edges).toHaveLength(2);
+    expect(graph.nodes.every((node) => node.kind !== "character")).toBe(true);
 
     const bossNode = graph.nodes.find((node) => node.kind === "boss");
-    const characterNode = graph.nodes.find((node) => node.kind === "character");
 
     expect(bossNode?.layoutRadius).toBeGreaterThan(bossNode?.radius ?? 0);
-    expect(characterNode?.layoutRadius).toBe(characterNode?.radius);
   });
 
   it("builds relic win-rate graphs with support filtering", () => {
@@ -159,6 +153,7 @@ describe("graphBuilders", () => {
     expect(graph.nodes.some((node) => node.label === "Fragrant Mushroom")).toBe(false);
     expect(graph.ranking[0].label).toBe("Cloak Clasp");
     expect(graph.ranking[0].valueLabel).toContain("50%");
+    expect(graph.nodes.every((node) => node.kind !== "character")).toBe(true);
 
     const relicNode = graph.nodes.find((node) => node.kind === "relic");
     expect(relicNode?.layoutRadius).toBeGreaterThan(relicNode?.radius ?? 0);
@@ -190,6 +185,7 @@ describe("graphBuilders", () => {
     expect(graph.ranking[0].label).toBe("Knowledge Demon Boss");
     expect(graph.ranking[0].valueLabel).toBe("3 losses");
     expect(graph.nodes.some((node) => node.label === "Doormaker Boss")).toBe(true);
+    expect(graph.nodes.every((node) => node.kind !== "character")).toBe(true);
 
     const encounterNode = graph.nodes.find((node) => node.kind === "encounter");
     expect(encounterNode?.layoutRadius).toBeGreaterThan(encounterNode?.radius ?? 0);

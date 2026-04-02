@@ -60,7 +60,8 @@ fn vertexMain(
 
 @fragment
 fn fragmentMain(input: VertexOutput) -> @location(0) vec4f {
-    if (distance(input.worldPosition, input.center) > input.radius) {
+    let radialDistance = distance(input.worldPosition, input.center);
+    if (radialDistance > input.radius) {
         discard;
     }
 
