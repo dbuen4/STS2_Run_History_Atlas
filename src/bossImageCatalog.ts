@@ -31,6 +31,10 @@ const bossImageUrlBySlug = new Map<string, string>([
   ["door", doorImageUrl],
   ["doormaker", doormakerImageUrl],
   ["kaiser_crab", kaiserCrabImageUrl],
+  // The Kin does not currently have a dedicated portrait in the local asset set,
+  // so we reuse the Kin Priest portrait as a fallback.
+  ["kin", kinPriestImageUrl],
+  ["the_kin", kinPriestImageUrl],
   ["kin_follower", kinFollowerImageUrl],
   ["kin_priest", kinPriestImageUrl],
   ["knowledge_demon", knowledgeDemonImageUrl],
