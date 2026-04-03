@@ -16,6 +16,10 @@ module.exports = {
         type: "asset/source",
       },
       {
+        test: /\.(png|webp)$/i,
+        type: "asset/resource",
+      },
+      {
         test: /\.tsx?$/,
         use: "ts-loader",
         exclude: /node_modules/,

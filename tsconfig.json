@@ -2,14 +2,14 @@
   "compilerOptions": {
     "target": "ES2022",
     "module": "ESNext",
-    "moduleResolution": "Node",
+    "moduleResolution": "Bundler",
     "strict": true,
     "esModuleInterop": true,
     "forceConsistentCasingInFileNames": true,
     "skipLibCheck": true,
     "sourceMap": true,
     "types": ["@webgpu/types", "node"],
-    "lib": ["DOM", "DOM.Iterable", "ES2022", "WebWorker"]
+    "lib": ["DOM", "DOM.Iterable", "ES2022"]
   },
   "include": ["src/**/*", "tests/**/*"]
 }
