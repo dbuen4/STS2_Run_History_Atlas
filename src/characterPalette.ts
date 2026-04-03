@@ -1,5 +1,14 @@
 export type RgbaColor = [number, number, number, number];
 
+const ironcladImageUrl = new URL("./assets/character-icons/ironclad_energy.webp", import.meta.url).toString();
+const silentImageUrl = new URL("./assets/character-icons/silent_energy.webp", import.meta.url).toString();
+const regentImageUrl = new URL("./assets/character-icons/regent_energy.webp", import.meta.url).toString();
+const defectImageUrl = new URL("./assets/character-icons/defect_energy.webp", import.meta.url).toString();
+const necrobinderImageUrl = new URL(
+  "./assets/character-icons/necrobinder_energy.webp",
+  import.meta.url
+).toString();
+
 export interface CharacterLegendItem {
   id: string;
   label: string;
@@ -37,10 +46,21 @@ export const CHARACTER_LEGEND: CharacterLegendItem[] = [
 const DEFAULT_CHARACTER_COLOR: RgbaColor = [0.44, 0.34, 0.24, 1];
 
 const characterColorById = new Map(CHARACTER_LEGEND.map((item) => [item.id, item.color] as const));
+const characterImageUrlById = new Map<string, string>([
+  ["CHARACTER.IRONCLAD", ironcladImageUrl],
+  ["CHARACTER.SILENT", silentImageUrl],
+  ["CHARACTER.REGENT", regentImageUrl],
+  ["CHARACTER.DEFECT", defectImageUrl],
+  ["CHARACTER.NECROBINDER", necrobinderImageUrl],
+]);
 
 export function getCharacterColor(characterId: string, fallbackColor: RgbaColor = DEFAULT_CHARACTER_COLOR): RgbaColor {
   const color = characterColorById.get(characterId) ?? fallbackColor;
   return [color[0], color[1], color[2], color[3]];
+}
+
+export function getCharacterImageUrl(characterId: string): string | undefined {
+  return characterImageUrlById.get(characterId);
 }
 
 export function rgbaToCssColor([red, green, blue, alpha]: RgbaColor): string {

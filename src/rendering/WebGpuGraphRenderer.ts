@@ -23,6 +23,11 @@ interface LabelBinding {
   element: HTMLDivElement;
 }
 
+interface ImageBinding {
+  nodeIndex: number;
+  element: HTMLDivElement;
+}
+
 const SHOW_NODE_LABELS = false;
 const ENABLE_EDGE_RENDERING = false;
 const NODE_STRIDE_FLOATS = 8;
@@ -173,6 +178,7 @@ export class WebGpuGraphRenderer {
   private layout: ForceDirectedLayout | null = null;
   private layoutActive: boolean = false;
   private animationHandle: number | null = null;
+  private imageBindings: ImageBinding[] = [];
   private labelBindings: LabelBinding[] = [];
   private nodeSnapshot: Float32Array = new Float32Array();
   private nodeReadbackBuffer: GPUBuffer | null = null;
@@ -329,6 +335,7 @@ export class WebGpuGraphRenderer {
   }
 
   private clearLabels(): void {
+    this.imageBindings = [];
     this.labelBindings = [];
     this.nodeSnapshot = new Float32Array();
     if (this.labelLayer) {
@@ -338,16 +345,33 @@ export class WebGpuGraphRenderer {
   }
 
   private createLabels(nodes: GraphNode[]): void {
-    if (!this.labelLayer || !SHOW_NODE_LABELS) {
+    if (!this.labelLayer) {
+      this.imageBindings = [];
       this.labelBindings = [];
-      if (this.labelLayer) {
-        this.labelLayer.replaceChildren();
-        this.labelLayer.hidden = true;
-      }
       return;
     }
 
-    const bindings = nodes
+    const imageBindings = nodes
+      .map((node, nodeIndex) => ({ node, nodeIndex }))
+      .filter(({ node }) => Boolean(node.imageUrl))
+      .map(({ node, nodeIndex }) => {
+        const element = document.createElement("div");
+        element.className = "node-image";
+
+        const image = document.createElement("img");
+        image.className = "node-image-img";
+        image.src = node.imageUrl as string;
+        image.alt = `${node.label} icon`;
+        image.decoding = "async";
+        image.draggable = false;
+        element.append(image);
+
+        return { nodeIndex, element };
+      });
+
+    const labelBindings = !SHOW_NODE_LABELS
+      ? []
+      : nodes
       .map((node, nodeIndex) => ({ node, nodeIndex }))
       .filter(({ node }) => node.kind !== "character")
       .map(({ node, nodeIndex }) => {
@@ -357,19 +381,53 @@ export class WebGpuGraphRenderer {
         return { nodeIndex, element };
       });
 
-    this.labelBindings = bindings;
-    this.labelLayer.hidden = bindings.length === 0;
-    this.labelLayer.replaceChildren(...bindings.map((binding) => binding.element));
+    this.imageBindings = imageBindings;
+    this.labelBindings = labelBindings;
+    this.labelLayer.hidden = imageBindings.length === 0 && labelBindings.length === 0;
+    this.labelLayer.replaceChildren(
+      ...imageBindings.map((binding) => binding.element),
+      ...labelBindings.map((binding) => binding.element)
+    );
   }
 
   private renderLabels(): void {
-    if (!this.labelLayer || this.labelBindings.length === 0 || this.nodeSnapshot.length === 0) {
+    if (
+      !this.labelLayer ||
+      (this.imageBindings.length === 0 && this.labelBindings.length === 0) ||
+      this.nodeSnapshot.length === 0
+    ) {
       return;
     }
 
     const width = this.canvas.clientWidth;
     const height = this.canvas.clientHeight;
     const sizeBasis = Math.min(width, height);
+
+    for (const binding of this.imageBindings) {
+      const offset = binding.nodeIndex * NODE_STRIDE_FLOATS;
+      const worldX = this.nodeSnapshot[offset];
+      const worldY = this.nodeSnapshot[offset + 1];
+      const radius = this.nodeSnapshot[offset + 2];
+      const center = worldToCanvas(worldX, worldY, this.camera, this.canvas);
+      const screenRadius = (radius / this.camera.zoom) * (sizeBasis / 2);
+      const size = clamp(screenRadius * 2.15, 34, 156);
+      const visible =
+        center.x >= -(size / 2) &&
+        center.x <= width + size / 2 &&
+        center.y >= -(size / 2) &&
+        center.y <= height + size / 2;
+
+      binding.element.style.display = visible ? "block" : "none";
+      if (!visible) {
+        continue;
+      }
+
+      binding.element.style.left = `${center.x}px`;
+      binding.element.style.top = `${center.y}px`;
+      binding.element.style.width = `${size}px`;
+      binding.element.style.height = `${size}px`;
+      binding.element.style.opacity = `${clamp((screenRadius - 5) / 10, 0.45, 1)}`;
+    }
 
     for (const binding of this.labelBindings) {
       const offset = binding.nodeIndex * NODE_STRIDE_FLOATS;
@@ -449,7 +507,7 @@ export class WebGpuGraphRenderer {
       !this.nodeReadbackBuffer ||
       this.nodeReadbackPending ||
       this.nodeBufferSize === 0 ||
-      (!this.autoFitEnabled && this.labelBindings.length === 0)
+      (!this.autoFitEnabled && this.labelBindings.length === 0 && this.imageBindings.length === 0)
     ) {
       return false;
     }
@@ -698,13 +756,14 @@ export class WebGpuGraphRenderer {
     pass.end();
     const shouldReadbackNodes = this.autoFitEnabled
       ? true
-      : this.labelBindings.length > 0 && (this.layoutActive || this.frameCount % 18 === 0);
+      : (this.labelBindings.length > 0 || this.imageBindings.length > 0) &&
+        (this.layoutActive || this.frameCount % 18 === 0);
     const queuedReadback = shouldReadbackNodes ? this.queueNodeReadback(commandEncoder) : false;
     this.device.queue.submit([commandEncoder.finish()]);
     if (queuedReadback) {
       this.requestNodeReadback(this.graphVersion);
     }
-    if (cameraChanged || this.labelBindings.length > 0) {
+    if (cameraChanged || this.labelBindings.length > 0 || this.imageBindings.length > 0) {
       this.renderLabels();
     }
   }

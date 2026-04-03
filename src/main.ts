@@ -353,7 +353,8 @@ function updateControlNote(view: GraphView): void {
   } else if (view === "bossDeaths") {
     topNInput.disabled = false;
     minSupportInput.disabled = true;
-    note.textContent = "Boss Deaths uses Max Nodes to cap the encounter list and ignores Minimum Node Support.";
+    note.textContent =
+      "Boss Deaths only includes true boss kill screens, uses Max Nodes to cap the list, and ignores Minimum Node Support.";
   } else if (view === "cardStats") {
     topNInput.disabled = false;
     minSupportInput.disabled = false;
@@ -363,7 +364,7 @@ function updateControlNote(view: GraphView): void {
     topNInput.disabled = false;
     minSupportInput.disabled = true;
     note.textContent =
-      "Encounter Stats uses progress.save fight aggregates and applies Max Nodes to the most dangerous encounters.";
+      "Encounter Stats uses progress.save fight aggregates and applies Max Nodes across all tracked encounters, including elites and bosses.";
   } else {
     topNInput.disabled = false;
     minSupportInput.disabled = false;

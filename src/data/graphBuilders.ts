@@ -11,6 +11,9 @@ import {
   RankingEntry,
   RunSummary,
 } from "../types";
+import { getBossImageUrl, isBossEncounterId } from "../bossImageCatalog";
+import { getCardImageUrl } from "../cardImageCatalog";
+import { getRelicImageUrl } from "../relicImageCatalog";
 import { assignGraphNodeColors } from "../nodePalette";
 import {
   computeLayoutRadius,
@@ -20,7 +23,7 @@ import {
   sortByNumberThenLabel,
   squareRootRadius,
 } from "../utils";
-import { getCharacterColor } from "../characterPalette";
+import { getCharacterColor, getCharacterImageUrl } from "../characterPalette";
 
 const COLORS = {
   characterLow: [0.67, 0.43, 0.28, 1] as [number, number, number, number],
@@ -30,7 +33,6 @@ const COLORS = {
   abandoned: [0.45, 0.44, 0.44, 1] as [number, number, number, number],
   boss: [0.65, 0.33, 0.2, 1] as [number, number, number, number],
   relic: [0.2, 0.38, 0.65, 1] as [number, number, number, number],
-  stat: [0.45, 0.34, 0.2, 1] as [number, number, number, number],
   card: [0.55, 0.3, 0.15, 1] as [number, number, number, number],
   encounter: [0.61, 0.23, 0.2, 1] as [number, number, number, number],
 };
@@ -112,6 +114,11 @@ function makeCountNode(
   });
 }
 
+function formatEncounterLabel(encounterId: string): string {
+  const label = humanizeToken(encounterId);
+  return isBossEncounterId(encounterId) ? label.replace(/ Boss$/, "") : label;
+}
+
 function makeMissingProgressGraph(view: GraphView, runCount: number): GraphDataset {
   const viewMeta: Record<Exclude<GraphView, "bossDeaths" | "relicWinRate">, { title: string; subtitle: string }> =
     {
@@ -155,9 +162,9 @@ function makeMissingProgressGraph(view: GraphView, runCount: number): GraphDatas
 function makeMissingRunGraph(view: Extract<GraphView, "bossDeaths" | "relicWinRate">, hasProgress: boolean): GraphDataset {
   const viewMeta: Record<Extract<GraphView, "bossDeaths" | "relicWinRate">, { title: string; subtitle: string }> = {
     bossDeaths: {
-      title: "Boss and Elite Deaths",
+      title: "Boss Deaths",
       subtitle:
-        "Boss Deaths needs `.run` history files so it can count which encounters actually ended your runs.",
+        "Boss Deaths needs `.run` history files so it can count which boss encounters actually ended your runs.",
     },
     relicWinRate: {
       title: "Relic Win Rate",
@@ -192,7 +199,10 @@ function buildBossGraph(runs: RunSummary[], topN: number, hasProgress: boolean):
   }
 
   const deathRuns = runs.filter(
-    (run) => run.killedByEncounter !== null && run.killedByEncounter !== "NONE.NONE"
+    (run) =>
+      run.killedByEncounter !== null &&
+      run.killedByEncounter !== "NONE.NONE" &&
+      isBossEncounterId(run.killedByEncounter)
   );
   const bossCounts = new Map<string, number>();
 
@@ -227,7 +237,7 @@ function buildBossGraph(runs: RunSummary[], topN: number, hasProgress: boolean):
   const bossNodes = rankedBosses.map((entry) =>
     makeCountNode(
       entry.encounter,
-      humanizeToken(entry.encounter),
+      formatEncounterLabel(entry.encounter),
       "boss",
       entry.count,
       maxBossCount,
@@ -236,6 +246,9 @@ function buildBossGraph(runs: RunSummary[], topN: number, hasProgress: boolean):
       0.16
     )
   );
+  bossNodes.forEach((node) => {
+    node.imageUrl = getBossImageUrl(node.id);
+  });
 
   const edges = [...characterBossEdgeCounts.entries()].map(([key, weight]) => {
     const [sourceId, targetId] = key.split("::");
@@ -244,30 +257,36 @@ function buildBossGraph(runs: RunSummary[], topN: number, hasProgress: boolean):
 
   const ranking: RankingEntry[] = rankedBosses.map((entry) => ({
     id: entry.encounter,
-    label: humanizeToken(entry.encounter),
+    label: formatEncounterLabel(entry.encounter),
     valueLabel: `${entry.count} death${entry.count === 1 ? "" : "s"}`,
     detail: "Counted from non-winning runs where this encounter finished the run.",
   }));
 
+  const summaryCards = [
+    { label: "Fatal Runs", value: String(deathRuns.length) },
+    { label: "Unique Bosses", value: String(bossCounts.size) },
+    { label: "Shown Bosses", value: String(rankedBosses.length) },
+    {
+      label: "Top Threat",
+      value: rankedBosses[0] ? formatEncounterLabel(rankedBosses[0].encounter) : "None",
+    },
+  ];
+
+  const warnings: string[] = [];
+  if (rankedBosses.length === 0) {
+    warnings.push("No boss deaths were found in the parsed runs.");
+  }
+
   return {
     view: "bossDeaths",
-    title: "Boss and Elite Deaths",
+    title: "Boss Deaths",
     subtitle:
-      "Boss nodes grow with total kills and focus on the encounters that most often ended a run.",
+      "Boss nodes grow with total deaths and focus on the true boss encounters that most often ended a run.",
     nodes: bossNodes,
     edges,
     ranking,
-    summaryCards: [
-      { label: "Fatal Runs", value: String(deathRuns.length) },
-      { label: "Unique Encounters", value: String(bossCounts.size) },
-      { label: "Shown Bosses", value: String(rankedBosses.length) },
-      {
-        label: "Top Threat",
-        value: rankedBosses[0] ? humanizeToken(rankedBosses[0].encounter) : "None",
-      },
-    ],
-    warnings:
-      rankedBosses.length === 0 ? ["No lethal encounters were found in the parsed runs."] : [],
+    summaryCards,
+    warnings,
   };
 }
 
@@ -349,6 +368,7 @@ function buildRelicGraph(
       secondaryValue: stat.support,
       radius: squareRootRadius(stat.winRate, maxRelicWinRate, 0.06, 0.15),
       color: COLORS.relic,
+      imageUrl: getRelicImageUrl(stat.id),
     })
   );
 
@@ -434,6 +454,7 @@ function buildProfileOverviewGraph(loadResult: LoadResult): GraphDataset {
         stat.id,
         blendColor(COLORS.characterLow, COLORS.characterHigh, stat.maxAscension / maxAscension)
       ),
+      imageUrl: getCharacterImageUrl(stat.id),
     });
   });
 
@@ -529,14 +550,6 @@ function buildCardStatsGraph(loadResult: LoadResult, topN: number, minSupport: n
   }
 
   const maxWinRate = Math.max(...cardAggregates.map((stat) => stat.winRate), 0.01);
-  const totals = {
-    CARD_PICKED: cardAggregates.reduce((sum, stat) => sum + stat.picked, 0),
-    CARD_SKIPPED: cardAggregates.reduce((sum, stat) => sum + stat.skipped, 0),
-    CARD_WON: cardAggregates.reduce((sum, stat) => sum + stat.wins, 0),
-    CARD_LOST: cardAggregates.reduce((sum, stat) => sum + stat.losses, 0),
-  };
-  const maxTotal = Math.max(totals.CARD_PICKED, totals.CARD_SKIPPED, totals.CARD_WON, totals.CARD_LOST, 1);
-
   const nodes: GraphNode[] = cardAggregates.map((stat) =>
     withLayoutRadius({
       id: stat.id,
@@ -546,22 +559,9 @@ function buildCardStatsGraph(loadResult: LoadResult, topN: number, minSupport: n
       secondaryValue: stat.support,
       radius: squareRootRadius(stat.winRate, maxWinRate, 0.06, 0.15),
       color: blendColor(COLORS.loss, COLORS.win, stat.winRate),
+      imageUrl: getCardImageUrl(stat.id),
     })
   );
-  nodes.push(
-    makeCountNode("CARD_PICKED", "Picked", "stat", totals.CARD_PICKED, maxTotal, COLORS.stat, 0.06, 0.14),
-    makeCountNode("CARD_SKIPPED", "Skipped", "stat", totals.CARD_SKIPPED, maxTotal, COLORS.stat, 0.06, 0.14),
-    makeCountNode("CARD_WON", "Won With", "stat", totals.CARD_WON, maxTotal, COLORS.win, 0.06, 0.14),
-    makeCountNode("CARD_LOST", "Lost With", "stat", totals.CARD_LOST, maxTotal, COLORS.loss, 0.06, 0.14)
-  );
-
-  const edgeMap = new Map<string, GraphEdge>();
-  for (const stat of cardAggregates) {
-    addEdge(edgeMap, stat.id, "CARD_PICKED", stat.picked);
-    addEdge(edgeMap, stat.id, "CARD_SKIPPED", stat.skipped);
-    addEdge(edgeMap, stat.id, "CARD_WON", stat.wins);
-    addEdge(edgeMap, stat.id, "CARD_LOST", stat.losses);
-  }
 
   const ranking: RankingEntry[] = cardAggregates.map((stat) => ({
     id: stat.id,
@@ -574,9 +574,9 @@ function buildCardStatsGraph(loadResult: LoadResult, topN: number, minSupport: n
     view: "cardStats",
     title: "Card Stats",
     subtitle:
-      "Cards are filtered to non-starter pickups, sized by profile win rate, and linked to picked, skipped, win, and loss totals.",
+      "Cards are filtered to non-starter pickups and sized by profile win rate across the qualifying support threshold.",
     nodes,
-    edges: [...edgeMap.values()],
+    edges: [],
     ranking,
     summaryCards: [
       {
@@ -666,7 +666,7 @@ function buildEncounterStatsGraph(loadResult: LoadResult, topN: number): GraphDa
   const encounterNodes = encounterAggregates.map((stat) =>
     withLayoutRadius({
       id: stat.id,
-      label: humanizeToken(stat.id),
+      label: formatEncounterLabel(stat.id),
       kind: "encounter" as const,
       value: stat.losses,
       secondaryValue: stat.lossRate,
@@ -677,7 +677,7 @@ function buildEncounterStatsGraph(loadResult: LoadResult, topN: number): GraphDa
 
   const ranking: RankingEntry[] = encounterAggregates.map((stat) => ({
     id: stat.id,
-    label: humanizeToken(stat.id),
+    label: formatEncounterLabel(stat.id),
     valueLabel: `${stat.losses} losses`,
     detail: `${stat.wins} wins overall, ${formatPercent(stat.lossRate)} loss rate across tracked fights`,
   }));
@@ -699,7 +699,7 @@ function buildEncounterStatsGraph(loadResult: LoadResult, topN: number): GraphDa
       },
       { label: "Shown Encounters", value: String(encounterAggregates.length) },
       { label: "Recorded Losses", value: String(totalRecordedLosses) },
-      { label: "Top Threat", value: humanizeToken(encounterAggregates[0].id) },
+      { label: "Top Threat", value: formatEncounterLabel(encounterAggregates[0].id) },
     ],
     warnings: [],
   };

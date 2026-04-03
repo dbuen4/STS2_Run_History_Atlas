@@ -40,6 +40,7 @@ export interface GraphNode {
   radius: number;
   layoutRadius: number;
   color: [number, number, number, number];
+  imageUrl?: string;
   secondaryValue?: number;
 }
 
