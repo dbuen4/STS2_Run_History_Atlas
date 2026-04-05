@@ -508,6 +508,40 @@ function toCardAggregate(stat: ProgressCardStat): CardAggregate {
   };
 }
 
+function buildCardClassLayoutEdges(cardAggregates: CardAggregate[]): GraphEdge[] {
+  const cardIdsByPool = new Map<string, string[]>();
+
+  for (const stat of cardAggregates) {
+    const pool = getCardPool(stat.id);
+    if (!pool) {
+      continue;
+    }
+
+    const ids = cardIdsByPool.get(pool);
+    if (ids) {
+      ids.push(stat.id);
+    } else {
+      cardIdsByPool.set(pool, [stat.id]);
+    }
+  }
+
+  const edges: GraphEdge[] = [];
+
+  for (const ids of cardIdsByPool.values()) {
+    for (let sourceIndex = 0; sourceIndex < ids.length; sourceIndex += 1) {
+      for (let targetIndex = sourceIndex + 1; targetIndex < ids.length; targetIndex += 1) {
+        edges.push({
+          sourceId: ids[sourceIndex],
+          targetId: ids[targetIndex],
+          weight: 4,
+        });
+      }
+    }
+  }
+
+  return edges;
+}
+
 function buildCardStatsGraph(loadResult: LoadResult, topN: number, minSupport: number): GraphDataset {
   if (!loadResult.progress) {
     return makeMissingProgressGraph("cardStats", loadResult.runs.length);
@@ -551,11 +585,14 @@ function buildCardStatsGraph(loadResult: LoadResult, topN: number, minSupport: n
         { label: "Min Support", value: String(minSupport) },
         { label: "Action", value: "Lower Threshold" },
       ],
+      layoutEdges: [],
+      showEdges: false,
       warnings: [`No cards with at least ${minSupport} tracked wins or losses were found.`],
     };
   }
 
   const maxWinRate = Math.max(...cardAggregates.map((stat) => stat.winRate), 0.01);
+  const layoutEdges = buildCardClassLayoutEdges(cardAggregates);
   const nodes: GraphNode[] = cardAggregates.map((stat) =>
     withLayoutRadius({
       id: stat.id,
@@ -583,6 +620,8 @@ function buildCardStatsGraph(loadResult: LoadResult, topN: number, minSupport: n
       "Cards are filtered to non-starter pickups, sized by profile win rate, and pulled into tighter same-class clusters for each character pool and Colorless.",
     nodes,
     edges: [],
+    layoutEdges,
+    showEdges: false,
     ranking,
     summaryCards: [
       {

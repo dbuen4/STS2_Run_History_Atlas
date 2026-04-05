@@ -1,7 +1,12 @@
 const STS_GG_MONSTER_IMAGE_ROOT = "https://sts.gg/images/sts2/monsters";
+const STS_WIKI_IMAGE_ROOT = "https://slaythespire.wiki.gg/images";
 
 function buildMonsterImageUrl(fileName: string): string {
   return `${STS_GG_MONSTER_IMAGE_ROOT}/${fileName}`;
+}
+
+function buildWikiMonsterImageUrl(fileName: string, cacheKey: string): string {
+  return `${STS_WIKI_IMAGE_ROOT}/${fileName}?${cacheKey}`;
 }
 
 const encounterImageUrlByBaseId = new Map<string, string>([
@@ -50,6 +55,7 @@ const encounterImageUrlByBaseId = new Map<string, string>([
   ["SHRINKER_BEETLE", buildMonsterImageUrl("shrinker_beetle.png")],
   ["SKULKING_COLONY", buildMonsterImageUrl("skulkling_colomy.png")],
   ["SLIMED_BERSERKER", buildMonsterImageUrl("slimed_berserker.png")],
+  ["SLITHERING_STRANGLER", buildWikiMonsterImageUrl("StS2_Slithering_Strangler.png", "21031d")],
   ["SLUDGE_SPINNER", buildMonsterImageUrl("oil_spill.png")],
   ["SLUMBERING_BEETLE", buildMonsterImageUrl("slumberingbeetle.png")],
   ["SNAPPING_JAXFRUIT", buildMonsterImageUrl("snapping_jaxfruit.png")],
@@ -58,9 +64,12 @@ const encounterImageUrlByBaseId = new Map<string, string>([
   ["SPECTRAL_KNIGHT", buildMonsterImageUrl("spectral_knight.png")],
   ["TERROR_EEL", buildMonsterImageUrl("terror_eel.png")],
   ["THE_OBSCURA", buildMonsterImageUrl("the_obscura.png")],
+  ["THE_FORGOTTEN", buildWikiMonsterImageUrl("StS2_The_Forgotten.png", "f625b6")],
+  ["THE_LOST", buildWikiMonsterImageUrl("StS2_The_Lost.png", "cee827")],
   ["THIEVING_HOPPER", buildMonsterImageUrl("thievinghopper.png")],
   ["TOADPOLE", buildMonsterImageUrl("toadpole.png")],
   ["TUNNELER", buildMonsterImageUrl("tunneler.png")],
+  ["TURRET_OPERATOR", buildWikiMonsterImageUrl("StS2_Turret_Operator.png", "fd7a1e")],
   ["TWO_TAILED_RAT", buildMonsterImageUrl("two_tailed_rat.png")],
   ["VINE_SHAMBLER", buildMonsterImageUrl("vine_shambler.png")],
   ["WRIGGLER", buildMonsterImageUrl("wriggler.png")],
@@ -84,6 +93,7 @@ const encounterBaseIdAliases = new Map<string, string>([
   ["RUBY_RAIDERS", "CROSSBOW_RAIDER"],
   ["SCROLLS_OF_BITING", "SCROLL_OF_BITING"],
   ["SLIMES", "LEAF_SLIME_M"],
+  ["THE_LOST_AND_FORGOTTEN", "THE_LOST"],
   ["TOADPOLES", "TOADPOLE"],
   ["TWO_TAILED_RATS", "TWO_TAILED_RAT"],
 ]);
