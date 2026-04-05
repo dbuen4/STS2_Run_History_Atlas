@@ -502,6 +502,11 @@ function toCardAggregate(stat: ProgressCardStat): CardAggregate {
   };
 }
 
+function getCardCharacterClass(cardId: string): string | null {
+  const parts = cardId.split(".");
+  return parts.length >= 3 ? parts[1] : null;
+}
+
 function buildCardStatsGraph(loadResult: LoadResult, topN: number, minSupport: number): GraphDataset {
   if (!loadResult.progress) {
     return makeMissingProgressGraph("cardStats", loadResult.runs.length);
@@ -570,13 +575,34 @@ function buildCardStatsGraph(loadResult: LoadResult, topN: number, minSupport: n
     detail: `${stat.wins} wins and ${stat.losses} losses, picked ${stat.picked} times, skipped ${stat.skipped} times`,
   }));
 
+  // Build intra-class edges: connect each card to up to 3 nearest neighbors by win rate
+  // within the same character class, creating a web-like cluster per class.
+  const edgeMap = new Map<string, GraphEdge>();
+  const cardsByClass = new Map<string, CardAggregate[]>();
+  for (const stat of cardAggregates) {
+    const cls = getCardCharacterClass(stat.id);
+    if (cls !== null) {
+      const group = cardsByClass.get(cls) ?? [];
+      group.push(stat);
+      cardsByClass.set(cls, group);
+    }
+  }
+  for (const group of cardsByClass.values()) {
+    const sorted = [...group].sort((a, b) => b.winRate - a.winRate);
+    for (let i = 0; i < sorted.length; i++) {
+      for (let j = i + 1; j <= Math.min(sorted.length - 1, i + 3); j++) {
+        addEdge(edgeMap, sorted[i].id, sorted[j].id, 1);
+      }
+    }
+  }
+
   return {
     view: "cardStats",
     title: "Card Stats",
     subtitle:
       "Cards are filtered to non-starter pickups and sized by profile win rate across the qualifying support threshold.",
     nodes,
-    edges: [],
+    edges: [...edgeMap.values()],
     ranking,
     summaryCards: [
       {
