@@ -68,6 +68,8 @@ export interface GraphDataset {
   subtitle: string;
   nodes: GraphNode[];
   edges: GraphEdge[];
+  layoutEdges?: GraphEdge[];
+  showEdges?: boolean;
   ranking: RankingEntry[];
   summaryCards: SummaryCard[];
   warnings: string[];

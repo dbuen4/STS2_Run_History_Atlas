@@ -13,7 +13,7 @@ struct Uniforms {
 };
 
 @group(0) @binding(0) var<storage, read_write> nodes: array<Node>;
-@group(0) @binding(1) var<storage, read> adjacencyMatrix: array<u32>;
+@group(0) @binding(1) var<storage, read> adjacencyMatrix: array<f32>;
 @group(0) @binding(2) var<uniform> uniforms: Uniforms;
 
 @compute @workgroup_size(64, 1, 1)
@@ -36,10 +36,10 @@ fn main(@builtin(global_invocation_id) globalId: vec3<u32>) {
         let dist = max(length(delta), 0.001);
         let direction = delta / dist;
         let desired = current.layoutRadius + other.layoutRadius + uniforms.baseLength;
-        let connected = adjacencyMatrix[nodeIndex * uniforms.nodesLength + i] == 1u;
+        let connectionStrength = adjacencyMatrix[nodeIndex * uniforms.nodesLength + i];
 
-        if (connected) {
-            let attraction = (dist - desired) * 0.22;
+        if (connectionStrength > 0.0) {
+            let attraction = (dist - desired) * (0.18 + connectionStrength * 0.12);
             force += direction * attraction;
         } else {
             let overlap = max(desired - dist, 0.0);

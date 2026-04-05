@@ -32,7 +32,24 @@ fn vertexMain(
     @builtin(instance_index) instanceIndex: u32
 ) -> VertexOutput {
     let edge = edges[instanceIndex];
-    let worldPosition = select(edge.targetPos, edge.sourcePos, vertexIndex == 0u);
+    let delta = edge.targetPos - edge.sourcePos;
+    let segmentLength = length(delta);
+    var direction = vec2f(1.0, 0.0);
+    if (segmentLength > 0.0001) {
+        direction = delta / segmentLength;
+    }
+    let normal = vec2f(-direction.y, direction.x);
+    let halfWidth = 0.008;
+    var quad = array<vec2f, 6>(
+        vec2f(0.0, -1.0),
+        vec2f(0.0, 1.0),
+        vec2f(1.0, 1.0),
+        vec2f(1.0, 1.0),
+        vec2f(1.0, -1.0),
+        vec2f(0.0, -1.0)
+    );
+    let local = quad[vertexIndex];
+    let worldPosition = edge.sourcePos + delta * local.x + normal * local.y * halfWidth;
     let viewPosition = (worldPosition - camera.position) / camera.zoom;
 
     var output: VertexOutput;

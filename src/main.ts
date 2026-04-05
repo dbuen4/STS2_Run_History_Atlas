@@ -22,6 +22,8 @@ function createEmptyGraphDataset(): GraphDataset {
     subtitle: "",
     nodes: [],
     edges: [],
+    layoutEdges: [],
+    showEdges: false,
     ranking: [],
     summaryCards: [],
     warnings: [],
@@ -364,7 +366,7 @@ function updateControlNote(view: GraphView): void {
     topNInput.disabled = false;
     minSupportInput.disabled = true;
     note.textContent =
-      "Encounter Stats uses progress.save fight aggregates and applies Max Nodes across all tracked encounters, including elites and bosses.";
+      "Encounter Stats uses progress.save fight aggregates and applies Max Nodes across normal and elite encounters only; bosses and event fights are excluded.";
   } else {
     topNInput.disabled = false;
     minSupportInput.disabled = false;

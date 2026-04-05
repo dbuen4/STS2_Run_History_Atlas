@@ -29,7 +29,6 @@ interface ImageBinding {
 }
 
 const SHOW_NODE_LABELS = false;
-const ENABLE_EDGE_RENDERING = false;
 const NODE_STRIDE_FLOATS = 8;
 
 class ForceDirectedLayout {
@@ -51,7 +50,7 @@ class ForceDirectedLayout {
     this.magnitude = this.initialMagnitude;
 
     const nodeIndexById = new Map(nodes.map((node, index) => [node.id, index]));
-    const adjacencyMatrix = new Uint32Array(this.nodeCount * this.nodeCount);
+    const adjacencyMatrix = new Float32Array(this.nodeCount * this.nodeCount);
     for (const edge of edges) {
       const start = nodeIndexById.get(edge.sourceId);
       const end = nodeIndexById.get(edge.targetId);
@@ -59,8 +58,11 @@ class ForceDirectedLayout {
         continue;
       }
 
-      adjacencyMatrix[start * this.nodeCount + end] = 1;
-      adjacencyMatrix[end * this.nodeCount + start] = 1;
+      const weight = Math.max(edge.weight, 0);
+      const forwardIndex = start * this.nodeCount + end;
+      const backwardIndex = end * this.nodeCount + start;
+      adjacencyMatrix[forwardIndex] = Math.max(adjacencyMatrix[forwardIndex], weight);
+      adjacencyMatrix[backwardIndex] = Math.max(adjacencyMatrix[backwardIndex], weight);
     }
 
     this.adjacencyMatrixBuffer = device.createBuffer({
@@ -68,7 +70,7 @@ class ForceDirectedLayout {
       usage: GPUBufferUsage.STORAGE | GPUBufferUsage.COPY_DST,
       mappedAtCreation: true,
     });
-    new Uint32Array(this.adjacencyMatrixBuffer.getMappedRange()).set(adjacencyMatrix);
+    new Float32Array(this.adjacencyMatrixBuffer.getMappedRange()).set(adjacencyMatrix);
     this.adjacencyMatrixBuffer.unmap();
 
     this.uniformBuffer = device.createBuffer({
@@ -190,6 +192,7 @@ export class WebGpuGraphRenderer {
   private autoFitWarmupFrames: number = 0;
   private autoFitReadbacksRemaining: number = 0;
   private homeCamera: { x: number; y: number; zoom: number } = { x: 0, y: 0, zoom: 1 };
+  private showEdges: boolean = false;
 
   constructor(
     canvas: HTMLCanvasElement,
@@ -294,7 +297,7 @@ export class WebGpuGraphRenderer {
         targets: [{ format: this.format, blend: blendState }],
       },
       primitive: {
-        topology: "line-list",
+        topology: "triangle-list",
       },
     });
 
@@ -582,7 +585,7 @@ export class WebGpuGraphRenderer {
       view: graph.view,
       nodes: graph.nodes.length,
       edges: graph.edges.length,
-      edgeRenderingEnabled: ENABLE_EDGE_RENDERING,
+      edgeRenderingEnabled: graph.showEdges ?? false,
     });
 
     if (graph.nodes.length === 0) {
@@ -599,6 +602,7 @@ export class WebGpuGraphRenderer {
       this.autoFitEnabled = false;
       this.autoFitWarmupFrames = 0;
       this.autoFitReadbacksRemaining = 0;
+      this.showEdges = false;
       this.clearLabels();
       this.resetCamera();
       return;
@@ -620,6 +624,7 @@ export class WebGpuGraphRenderer {
     this.nodeSnapshot = nodeData.slice();
     this.applyCameraFitFromNodeData(this.nodeSnapshot, graph.nodes.length);
     this.createLabels(graph.nodes);
+    this.showEdges = graph.showEdges ?? false;
 
     const nodeIndexById = new Map(graph.nodes.map((node, index) => [node.id, index]));
     const edgeData = new Float32Array(graph.edges.length * 8);
@@ -637,10 +642,13 @@ export class WebGpuGraphRenderer {
       edgeData[offset + 1] = nodeData[sourceOffset + 1];
       edgeData[offset + 2] = nodeData[targetOffset];
       edgeData[offset + 3] = nodeData[targetOffset + 1];
-      edgeData[offset + 4] = (nodeData[sourceOffset + 4] + nodeData[targetOffset + 4]) * 0.4;
-      edgeData[offset + 5] = (nodeData[sourceOffset + 5] + nodeData[targetOffset + 5]) * 0.4;
-      edgeData[offset + 6] = (nodeData[sourceOffset + 6] + nodeData[targetOffset + 6]) * 0.4;
-      edgeData[offset + 7] = clamp(0.18 + edge.weight * 0.08, 0.18, 0.46);
+      const colorStrength = this.showEdges ? 0.65 : 0.4;
+      edgeData[offset + 4] = (nodeData[sourceOffset + 4] + nodeData[targetOffset + 4]) * colorStrength;
+      edgeData[offset + 5] = (nodeData[sourceOffset + 5] + nodeData[targetOffset + 5]) * colorStrength;
+      edgeData[offset + 6] = (nodeData[sourceOffset + 6] + nodeData[targetOffset + 6]) * colorStrength;
+      edgeData[offset + 7] = this.showEdges
+        ? clamp(0.36 + edge.weight * 0.12, 0.36, 0.82)
+        : clamp(0.18 + edge.weight * 0.08, 0.18, 0.46);
     });
 
     this.nodeBuffer = this.device.createBuffer({
@@ -677,8 +685,10 @@ export class WebGpuGraphRenderer {
     this.nodeCount = graph.nodes.length;
     this.edgeCount = graph.edges.length;
     this.frameCount = 0;
-    if (graph.edges.length === 0) {
-      this.layout = new ForceDirectedLayout(this.device, this.nodeBuffer, graph.nodes, graph.edges);
+
+    const layoutEdges = graph.layoutEdges ?? graph.edges;
+    if (graph.edges.length === 0 || layoutEdges.length > 0) {
+      this.layout = new ForceDirectedLayout(this.device, this.nodeBuffer, graph.nodes, layoutEdges);
       this.layout.reset(this.device);
       this.layoutActive = true;
       this.autoFitEnabled = true;
@@ -741,10 +751,10 @@ export class WebGpuGraphRenderer {
       ],
     });
 
-    if (ENABLE_EDGE_RENDERING && this.bindGroup && this.edgeCount > 0) {
+    if (this.showEdges && this.bindGroup && this.edgeCount > 0) {
       pass.setPipeline(this.edgePipeline);
       pass.setBindGroup(0, this.bindGroup);
-      pass.draw(2, this.edgeCount);
+      pass.draw(6, this.edgeCount);
     }
 
     if (this.bindGroup && this.nodeCount > 0) {

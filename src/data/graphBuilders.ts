@@ -12,7 +12,9 @@ import {
   RunSummary,
 } from "../types";
 import { getBossImageUrl, isBossEncounterId } from "../bossImageCatalog";
+import { getCardPool } from "../cardClassCatalog";
 import { getCardImageUrl } from "../cardImageCatalog";
+import { getEncounterImageUrl } from "../encounterImageCatalog";
 import { getRelicImageUrl } from "../relicImageCatalog";
 import { assignGraphNodeColors } from "../nodePalette";
 import {
@@ -119,6 +121,10 @@ function formatEncounterLabel(encounterId: string): string {
   return isBossEncounterId(encounterId) ? label.replace(/ Boss$/, "") : label;
 }
 
+function isTrackedEncounterStatsId(encounterId: string): boolean {
+  return !isBossEncounterId(encounterId) && !encounterId.endsWith("_EVENT_ENCOUNTER");
+}
+
 function makeMissingProgressGraph(view: GraphView, runCount: number): GraphDataset {
   const viewMeta: Record<Exclude<GraphView, "bossDeaths" | "relicWinRate">, { title: string; subtitle: string }> =
     {
@@ -135,7 +141,7 @@ function makeMissingProgressGraph(view: GraphView, runCount: number): GraphDatas
       encounterStats: {
         title: "Encounter Stats",
         subtitle:
-          "Encounter aggregates come from progress.save and cover more than final run-ending deaths.",
+          "Encounter aggregates come from progress.save and focus on normal and elite fights rather than bosses.",
       },
     };
 
@@ -502,6 +508,32 @@ function toCardAggregate(stat: ProgressCardStat): CardAggregate {
   };
 }
 
+function buildCardClassLayoutEdges(cardAggregates: CardAggregate[]): GraphEdge[] {
+  const cardIdsByPool = new Map<string, string[]>();
+  const edgeMap = new Map<string, GraphEdge>();
+
+  for (const stat of cardAggregates) {
+    const pool = getCardPool(stat.id);
+    if (!pool) {
+      continue;
+    }
+
+    const cardIds = cardIdsByPool.get(pool) ?? [];
+    cardIds.push(stat.id);
+    cardIdsByPool.set(pool, cardIds);
+  }
+
+  for (const cardIds of cardIdsByPool.values()) {
+    for (let index = 0; index < cardIds.length; index += 1) {
+      for (let otherIndex = index + 1; otherIndex < cardIds.length; otherIndex += 1) {
+        addEdge(edgeMap, cardIds[index], cardIds[otherIndex], 4);
+      }
+    }
+  }
+
+  return [...edgeMap.values()];
+}
+
 function buildCardStatsGraph(loadResult: LoadResult, topN: number, minSupport: number): GraphDataset {
   if (!loadResult.progress) {
     return makeMissingProgressGraph("cardStats", loadResult.runs.length);
@@ -569,14 +601,17 @@ function buildCardStatsGraph(loadResult: LoadResult, topN: number, minSupport: n
     valueLabel: `${formatPercent(stat.winRate)} win rate`,
     detail: `${stat.wins} wins and ${stat.losses} losses, picked ${stat.picked} times, skipped ${stat.skipped} times`,
   }));
+  const layoutEdges = buildCardClassLayoutEdges(cardAggregates);
 
   return {
     view: "cardStats",
     title: "Card Stats",
     subtitle:
-      "Cards are filtered to non-starter pickups and sized by profile win rate across the qualifying support threshold.",
+      "Cards are filtered to non-starter pickups, sized by profile win rate, and pulled into tighter same-class clusters for each character pool and Colorless.",
     nodes,
     edges: [],
+    layoutEdges,
+    showEdges: false,
     ranking,
     summaryCards: [
       {
@@ -619,7 +654,11 @@ function buildEncounterStatsGraph(loadResult: LoadResult, topN: number): GraphDa
     return makeMissingProgressGraph("encounterStats", loadResult.runs.length);
   }
 
-  const encounterAggregates = loadResult.progress.encounterStats
+  const eligibleEncounterStats = loadResult.progress.encounterStats.filter((stat) =>
+    isTrackedEncounterStatsId(stat.encounterId)
+  );
+
+  const encounterAggregates = eligibleEncounterStats
     .map(toEncounterAggregate)
     .filter((stat) => stat.losses > 0)
     .sort((left, right) => {
@@ -641,17 +680,22 @@ function buildEncounterStatsGraph(loadResult: LoadResult, topN: number): GraphDa
     return {
       view: "encounterStats",
       title: "Encounter Stats",
-      subtitle: "Encounter aggregates were loaded, but no tracked encounter losses were found.",
+      subtitle: "Encounter aggregates were loaded, but no normal or elite encounter losses were found.",
       nodes: [],
       edges: [],
       ranking: [],
       summaryCards: [
-        { label: "Tracked Encounters", value: String(loadResult.progress.encounterStats.length) },
+        {
+          label: "Tracked Encounters",
+          value: String(eligibleEncounterStats.filter((stat) => stat.fightStats.length > 0).length),
+        },
         { label: "Shown Encounters", value: "0" },
         { label: "Top N", value: String(topN) },
         { label: "Dangerous Fights", value: "0" },
       ],
-      warnings: ["No encounter losses were recorded in progress.save."],
+      warnings: [
+        "No normal or elite encounter losses were recorded in progress.save after excluding bosses and event fights.",
+      ],
     };
   }
 
@@ -671,7 +715,8 @@ function buildEncounterStatsGraph(loadResult: LoadResult, topN: number): GraphDa
       value: stat.losses,
       secondaryValue: stat.lossRate,
       radius: squareRootRadius(stat.losses, maxEncounterLosses, 0.06, 0.16),
-      color: blendColor(COLORS.boss, COLORS.loss, stat.lossRate),
+      color: blendColor(COLORS.encounter, COLORS.loss, stat.lossRate),
+      imageUrl: getEncounterImageUrl(stat.id),
     })
   );
 
@@ -688,14 +733,14 @@ function buildEncounterStatsGraph(loadResult: LoadResult, topN: number): GraphDa
     view: "encounterStats",
     title: "Encounter Stats",
     subtitle:
-      "Encounter nodes come from progress.save fight aggregates and focus on the fights with the most tracked losses.",
+      "Encounter nodes come from progress.save fight aggregates and focus on the normal and elite fights with the most tracked losses.",
     nodes: encounterNodes,
     edges: [...edgeMap.values()],
     ranking,
     summaryCards: [
       {
         label: "Tracked Encounters",
-        value: String(loadResult.progress.encounterStats.filter((stat) => stat.fightStats.length > 0).length),
+        value: String(eligibleEncounterStats.filter((stat) => stat.fightStats.length > 0).length),
       },
       { label: "Shown Encounters", value: String(encounterAggregates.length) },
       { label: "Recorded Losses", value: String(totalRecordedLosses) },
