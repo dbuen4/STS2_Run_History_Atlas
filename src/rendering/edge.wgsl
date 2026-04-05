@@ -29,15 +29,27 @@ struct VertexOutput {
     @location(0) color: vec4f,
 };
 
+const HALF_WIDTH: f32 = 0.006;
+
 @vertex
 fn vertexMain(
     @builtin(vertex_index) vertexIndex: u32,
     @builtin(instance_index) instanceIndex: u32
 ) -> VertexOutput {
     let edge = edges[instanceIndex];
-    let sourceNode = nodes[edge.sourceIndex];
-    let targetNode = nodes[edge.targetIndex];
-    let worldPosition = select(targetNode.pos, sourceNode.pos, vertexIndex == 0u);
+    let sourcePos = nodes[edge.sourceIndex].pos;
+    let targetPos = nodes[edge.targetIndex].pos;
+
+    let lineDir = normalize(targetPos - sourcePos);
+    let perp = vec2f(-lineDir.y, lineDir.x) * HALF_WIDTH;
+
+    // Quad layout (triangle-list, 6 vertices = 2 triangles):
+    //   A(src+perp), B(src-perp), C(tgt+perp), C, B, D(tgt-perp)
+    // Vertex → corner mapping: 0→A, 1→B, 2→C, 3→C, 4→B, 5→D
+    let useTarget = vertexIndex >= 2u && vertexIndex != 4u;
+    let useNegPerp = (vertexIndex == 1u) || (vertexIndex >= 4u);
+    let basePos = select(sourcePos, targetPos, useTarget);
+    let worldPosition = basePos + select(perp, -perp, useNegPerp);
     let viewPosition = (worldPosition - camera.position) / camera.zoom;
 
     var output: VertexOutput;

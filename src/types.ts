@@ -48,6 +48,7 @@ export interface GraphEdge {
   sourceId: string;
   targetId: string;
   weight: number;
+  color?: [number, number, number, number];
 }
 
 export interface RankingEntry {

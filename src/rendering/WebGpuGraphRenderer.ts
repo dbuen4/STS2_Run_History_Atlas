@@ -644,11 +644,17 @@ export class WebGpuGraphRenderer {
       const offset = index * EDGE_STRIDE;
       edgeUint32[offset] = start;
       edgeUint32[offset + 1] = end;
-      const sn = graph.nodes[start];
-      const en = graph.nodes[end];
-      edgeFloat32[offset + 2] = (sn.color[0] + en.color[0]) * 0.4;
-      edgeFloat32[offset + 3] = (sn.color[1] + en.color[1]) * 0.4;
-      edgeFloat32[offset + 4] = (sn.color[2] + en.color[2]) * 0.4;
+      if (edge.color) {
+        edgeFloat32[offset + 2] = edge.color[0];
+        edgeFloat32[offset + 3] = edge.color[1];
+        edgeFloat32[offset + 4] = edge.color[2];
+      } else {
+        const sn = graph.nodes[start];
+        const en = graph.nodes[end];
+        edgeFloat32[offset + 2] = (sn.color[0] + en.color[0]) * 0.4;
+        edgeFloat32[offset + 3] = (sn.color[1] + en.color[1]) * 0.4;
+        edgeFloat32[offset + 4] = (sn.color[2] + en.color[2]) * 0.4;
+      }
       edgeFloat32[offset + 5] = clamp(0.18 + edge.weight * 0.08, 0.18, 0.46);
     });
 
