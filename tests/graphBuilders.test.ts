@@ -2,9 +2,14 @@ import { readFileSync } from "node:fs";
 import path from "node:path";
 import { describe, expect, it } from "vitest";
 
+import { getBossImageUrl } from "../src/bossImageCatalog";
+import { getCardPool } from "../src/cardClassCatalog";
+import { getCardImageUrl } from "../src/cardImageCatalog";
 import { CHARACTER_LEGEND, getCharacterColor } from "../src/characterPalette";
 import { buildGraphDataset } from "../src/data/graphBuilders";
+import { getEncounterImageUrl } from "../src/encounterImageCatalog";
 import { LEGEND_VISIBLE_COUNT, buildNodeLegend, paginateLegendEntries } from "../src/nodePalette";
+import { getRelicImageUrl } from "../src/relicImageCatalog";
 import { parseAnalyticsTexts, parseRunJsonText } from "../src/data/runParser";
 import { GraphBuildOptions, GraphDataset, LoadResult, RunSummary } from "../src/types";
 import { computeLayoutRadius } from "../src/utils";
@@ -45,6 +50,49 @@ describe("graphBuilders", () => {
     { fileName: "abandoned.run", text: readFixture("abandoned.run") },
     { fileName: "progress.save", text: readFixture("progress.save") },
   ]);
+  const encounterGraphLoad: LoadResult = {
+    runs: [],
+    progress: {
+      ...loadResult.progress!,
+      encounterStats: [
+        {
+          encounterId: "ENCOUNTER.NIBBITS_WEAK",
+          fightStats: [{ character: "CHARACTER.NECROBINDER", wins: 5, losses: 3 }],
+        },
+        {
+          encounterId: "ENCOUNTER.ENTOMANCER_ELITE",
+          fightStats: [{ character: "CHARACTER.IRONCLAD", wins: 7, losses: 2 }],
+        },
+        {
+          encounterId: "ENCOUNTER.KNOWLEDGE_DEMON_BOSS",
+          fightStats: [{ character: "CHARACTER.NECROBINDER", wins: 0, losses: 9 }],
+        },
+        {
+          encounterId: "ENCOUNTER.BATTLEWORN_DUMMY_EVENT_ENCOUNTER",
+          fightStats: [{ character: "CHARACTER.SILENT", wins: 0, losses: 1 }],
+        },
+      ],
+    },
+    parsedFiles: 0,
+    skippedFiles: 0,
+    warnings: [],
+  };
+  const cardClusterLoad: LoadResult = {
+    runs: [],
+    progress: {
+      ...loadResult.progress!,
+      cardStats: [
+        { id: "CARD.OFFERING", timesPicked: 5, timesSkipped: 0, timesWon: 5, timesLost: 0 },
+        { id: "CARD.PYRE", timesPicked: 5, timesSkipped: 0, timesWon: 4, timesLost: 1 },
+        { id: "CARD.FEAR", timesPicked: 4, timesSkipped: 0, timesWon: 3, timesLost: 1 },
+        { id: "CARD.FLASH_OF_STEEL", timesPicked: 10, timesSkipped: 0, timesWon: 7, timesLost: 3 },
+        { id: "CARD.SECRET_WEAPON", timesPicked: 5, timesSkipped: 0, timesWon: 3, timesLost: 2 },
+      ],
+    },
+    parsedFiles: 0,
+    skippedFiles: 0,
+    warnings: [],
+  };
 
   it("uses fixed character colors in profile overview", () => {
     const profileGraph = build("profileOverview", loadResult);
@@ -79,15 +127,12 @@ describe("graphBuilders", () => {
     expect(legend.every((entry) => entry.kind !== "character")).toBe(true);
   });
 
-  it("excludes auxiliary card stat nodes from the legend", () => {
+  it("keeps the card-stats legend aligned with the ranked cards", () => {
     const graph = build("cardStats", loadResult, { topN: 5, minSupport: 2 });
     const legend = buildNodeLegend(graph);
 
     expect(legend.map((entry) => entry.label)).toEqual(graph.ranking.map((entry) => entry.label));
-    expect(legend.some((entry) => entry.label === "Picked")).toBe(false);
-    expect(legend.some((entry) => entry.label === "Skipped")).toBe(false);
-    expect(legend.some((entry) => entry.label === "Won With")).toBe(false);
-    expect(legend.some((entry) => entry.label === "Lost With")).toBe(false);
+    expect(legend.every((entry) => entry.kind === "card")).toBe(true);
   });
 
   it("paginates legend entries in a sliding five-item window", () => {
@@ -136,14 +181,96 @@ describe("graphBuilders", () => {
   it("builds boss death graphs with top encounters", () => {
     const graph = build("bossDeaths", loadResult, { topN: 5, minSupport: 2 });
 
-    expect(graph.nodes.some((node) => node.label === "Knowledge Demon Boss")).toBe(true);
-    expect(graph.nodes.some((node) => node.label === "Doormaker Boss")).toBe(true);
+    expect(graph.nodes.some((node) => node.label === "Knowledge Demon")).toBe(true);
+    expect(graph.nodes.some((node) => node.label === "Doormaker")).toBe(true);
     expect(graph.edges).toHaveLength(2);
     expect(graph.nodes.every((node) => node.kind !== "character")).toBe(true);
+    expect(graph.ranking.every((entry) => !entry.label.endsWith(" Boss"))).toBe(true);
 
     const bossNode = graph.nodes.find((node) => node.kind === "boss");
 
     expect(bossNode?.layoutRadius).toBeGreaterThan(bossNode?.radius ?? 0);
+  });
+
+  it("adds local boss images for known boss encounters", () => {
+    const graph = build("bossDeaths", loadResult, { topN: 5, minSupport: 2 });
+    const knowledgeDemonNode = graph.nodes.find((node) => node.id === "ENCOUNTER.KNOWLEDGE_DEMON_BOSS");
+    const doormakerNode = graph.nodes.find((node) => node.id === "ENCOUNTER.DOORMAKER_BOSS");
+
+    expect(getBossImageUrl("ENCOUNTER.KNOWLEDGE_DEMON_BOSS")).toBeTruthy();
+    expect(knowledgeDemonNode?.imageUrl).toBeTruthy();
+    expect(doormakerNode?.imageUrl).toBeTruthy();
+  });
+
+  it("excludes non-boss encounters from boss death graphs", () => {
+    const eliteOnlyLoad: LoadResult = {
+      runs: [
+        {
+          runId: "elite-loss-1",
+          sourceName: "elite-loss-1.run",
+          character: "CHARACTER.IRONCLAD",
+          win: false,
+          wasAbandoned: false,
+          killedByEncounter: "ENCOUNTER.NIBBITS_WEAK",
+          relicIdsExcludingStarter: [],
+        },
+        {
+          runId: "boss-loss-1",
+          sourceName: "boss-loss-1.run",
+          character: "CHARACTER.SILENT",
+          win: false,
+          wasAbandoned: false,
+          killedByEncounter: "ENCOUNTER.KNOWLEDGE_DEMON_BOSS",
+          relicIdsExcludingStarter: [],
+        },
+      ],
+      progress: null,
+      parsedFiles: 2,
+      skippedFiles: 0,
+      warnings: [],
+    };
+
+    const graph = build("bossDeaths", eliteOnlyLoad, { topN: 5, minSupport: 2 });
+
+    expect(graph.nodes.map((node) => node.id)).toEqual(["ENCOUNTER.KNOWLEDGE_DEMON_BOSS"]);
+    expect(graph.ranking.map((entry) => entry.id)).toEqual(["ENCOUNTER.KNOWLEDGE_DEMON_BOSS"]);
+  });
+
+  it("maps Kaiser Crab to a local boss image", () => {
+    const kaiserCrabLoad: LoadResult = {
+      runs: [
+        {
+          runId: "kaiser-loss-1",
+          sourceName: "kaiser-loss-1.run",
+          character: "CHARACTER.IRONCLAD",
+          win: false,
+          wasAbandoned: false,
+          killedByEncounter: "ENCOUNTER.KAISER_CRAB_BOSS",
+          relicIdsExcludingStarter: [],
+        },
+        {
+          runId: "kaiser-loss-2",
+          sourceName: "kaiser-loss-2.run",
+          character: "CHARACTER.SILENT",
+          win: false,
+          wasAbandoned: false,
+          killedByEncounter: "ENCOUNTER.KAISER_CRAB_BOSS",
+          relicIdsExcludingStarter: [],
+        },
+      ],
+      progress: null,
+      parsedFiles: 2,
+      skippedFiles: 0,
+      warnings: [],
+    };
+
+    const graph = build("bossDeaths", kaiserCrabLoad, { topN: 5, minSupport: 2 });
+    const kaiserNode = graph.nodes.find((node) => node.id === "ENCOUNTER.KAISER_CRAB_BOSS");
+
+    expect(getBossImageUrl("ENCOUNTER.KAISER_CRAB_BOSS")).toBeTruthy();
+    expect(kaiserNode?.imageUrl).toBeTruthy();
+    expect(graph.summaryCards.some((card) => card.label === "Kaiser Crab")).toBe(false);
+    expect(graph.warnings).toHaveLength(0);
   });
 
   it("builds relic win-rate graphs with support filtering", () => {
@@ -157,6 +284,14 @@ describe("graphBuilders", () => {
 
     const relicNode = graph.nodes.find((node) => node.kind === "relic");
     expect(relicNode?.layoutRadius).toBeGreaterThan(relicNode?.radius ?? 0);
+  });
+
+  it("adds local relic images for known relics", () => {
+    const graph = build("relicWinRate", loadResult, { topN: 5, minSupport: 2 });
+    const cloakClaspNode = graph.nodes.find((node) => node.id === "RELIC.CLOAK_CLASP");
+
+    expect(getRelicImageUrl("RELIC.CLOAK_CLASP")).toBeTruthy();
+    expect(cloakClaspNode?.imageUrl).toBeTruthy();
   });
 
   it("builds profile overview graphs from progress.save", () => {
@@ -173,22 +308,64 @@ describe("graphBuilders", () => {
 
     expect(graph.ranking[0].label).toBe("Offering");
     expect(graph.ranking[0].valueLabel).toBe("100% win rate");
-    expect(graph.nodes.some((node) => node.label === "Picked")).toBe(true);
+    expect(graph.nodes).toHaveLength(graph.ranking.length);
+    expect(graph.edges).toHaveLength(0);
+    expect(graph.showEdges).toBe(false);
+    expect(graph.nodes.every((node) => node.kind === "card")).toBe(true);
 
-    const statNode = graph.nodes.find((node) => node.kind === "stat");
-    expect(statNode?.layoutRadius).toBeGreaterThan(statNode?.radius ?? 0);
+    const cardNode = graph.nodes.find((node) => node.id === "CARD.OFFERING");
+    expect(cardNode?.layoutRadius).toBeGreaterThan(cardNode?.radius ?? 0);
   });
 
-  it("builds encounter stats graphs from progress.save", () => {
-    const graph = build("encounterStats", loadResult, { topN: 5, minSupport: 2 });
+  it("adds local card images for known cards", () => {
+    const graph = build("cardStats", loadResult, { topN: 5, minSupport: 2 });
+    const offeringNode = graph.nodes.find((node) => node.id === "CARD.OFFERING");
 
-    expect(graph.ranking[0].label).toBe("Knowledge Demon Boss");
+    expect(getCardImageUrl("CARD.OFFERING")).toBeTruthy();
+    expect(offeringNode?.imageUrl).toBeTruthy();
+  });
+
+  it("adds stronger hidden layout links so cards cluster by class and colorless pool", () => {
+    const graph = build("cardStats", cardClusterLoad, { topN: 5, minSupport: 2 });
+    const layoutEdges = graph.layoutEdges ?? [];
+
+    expect(graph.edges).toHaveLength(0);
+    expect(graph.showEdges).toBe(false);
+    expect(getCardPool("CARD.OFFERING")).toBe("ironclad");
+    expect(getCardPool("CARD.FLASH_OF_STEEL")).toBe("colorless");
+    expect(layoutEdges).toEqual([
+      { sourceId: "CARD.OFFERING", targetId: "CARD.PYRE", weight: 4 },
+      { sourceId: "CARD.FLASH_OF_STEEL", targetId: "CARD.SECRET_WEAPON", weight: 4 },
+    ]);
+  });
+
+  it("builds encounter stats graphs from normal and elite encounters only", () => {
+    const graph = build("encounterStats", encounterGraphLoad, { topN: 5, minSupport: 2 });
+
+    expect(graph.ranking.map((entry) => entry.id)).toEqual([
+      "ENCOUNTER.NIBBITS_WEAK",
+      "ENCOUNTER.ENTOMANCER_ELITE",
+    ]);
+    expect(graph.ranking[0].label).toBe("Nibbits Weak");
     expect(graph.ranking[0].valueLabel).toBe("3 losses");
-    expect(graph.nodes.some((node) => node.label === "Doormaker Boss")).toBe(true);
     expect(graph.nodes.every((node) => node.kind !== "character")).toBe(true);
+    expect(graph.nodes.every((node) => !node.id.endsWith("_BOSS"))).toBe(true);
+    expect(graph.nodes.every((node) => !node.id.endsWith("_EVENT_ENCOUNTER"))).toBe(true);
+    expect(graph.summaryCards[3].value).toBe("Nibbits Weak");
 
     const encounterNode = graph.nodes.find((node) => node.kind === "encounter");
     expect(encounterNode?.layoutRadius).toBeGreaterThan(encounterNode?.radius ?? 0);
+  });
+
+  it("adds encounter images for known normal and elite encounters", () => {
+    const graph = build("encounterStats", encounterGraphLoad, { topN: 5, minSupport: 2 });
+    const nibbitsNode = graph.nodes.find((node) => node.id === "ENCOUNTER.NIBBITS_WEAK");
+    const entomancerNode = graph.nodes.find((node) => node.id === "ENCOUNTER.ENTOMANCER_ELITE");
+
+    expect(getEncounterImageUrl("ENCOUNTER.NIBBITS_WEAK")).toBeTruthy();
+    expect(getEncounterImageUrl("ENCOUNTER.ENTOMANCER_ELITE")).toBeTruthy();
+    expect(nibbitsNode?.imageUrl).toBeTruthy();
+    expect(entomancerNode?.imageUrl).toBeTruthy();
   });
 
   it("returns a helpful warning when progress.save is missing", () => {

@@ -43,7 +43,7 @@ describe.skipIf(!hasLiveData)("live saves acceptance", () => {
   it("matches the current top boss death count", () => {
     const graph = buildGraphDataset("bossDeaths", loadResult, { topN: 12, minSupport: 5 });
 
-    expect(graph.ranking[0].label).toBe("Knowledge Demon Boss");
+    expect(graph.ranking[0].label).toBe("Knowledge Demon");
     expect(graph.ranking[0].valueLabel).toBe("9 deaths");
   });
 
@@ -70,10 +70,12 @@ describe.skipIf(!hasLiveData)("live saves acceptance", () => {
     expect(graph.ranking[0].valueLabel).toBe("100% win rate");
   });
 
-  it("matches the current top encounter stat", () => {
+  it("keeps encounter stats focused on non-boss fights", () => {
     const graph = buildGraphDataset("encounterStats", loadResult, { topN: 12, minSupport: 5 });
 
-    expect(graph.ranking[0].label).toBe("Knowledge Demon Boss");
-    expect(graph.ranking[0].valueLabel).toBe("9 losses");
+    expect(graph.ranking.length).toBeGreaterThan(0);
+    expect(graph.ranking[0].valueLabel).toMatch(/losses$/);
+    expect(graph.nodes.every((node) => !node.id.endsWith("_BOSS"))).toBe(true);
+    expect(graph.nodes.every((node) => !node.id.endsWith("_EVENT_ENCOUNTER"))).toBe(true);
   });
 });
