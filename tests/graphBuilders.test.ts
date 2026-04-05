@@ -368,6 +368,12 @@ describe("graphBuilders", () => {
     expect(entomancerNode?.imageUrl).toBeTruthy();
   });
 
+  it("maps the remaining missing normal encounter art", () => {
+    expect(getEncounterImageUrl("ENCOUNTER.SLITHERING_STRANGLER_NORMAL")).toContain("StS2_Slithering_Strangler");
+    expect(getEncounterImageUrl("ENCOUNTER.THE_LOST_AND_FORGOTTEN_NORMAL")).toContain("StS2_The_Lost");
+    expect(getEncounterImageUrl("ENCOUNTER.TURRET_OPERATOR_WEAK")).toContain("StS2_Turret_Operator");
+  });
+
   it("returns a helpful warning when progress.save is missing", () => {
     const runOnlyLoad: LoadResult = {
       runs,
