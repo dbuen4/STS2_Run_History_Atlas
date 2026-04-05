@@ -80,13 +80,32 @@ function blendColor(
   ];
 }
 
-function addEdge(edgeMap: Map<string, GraphEdge>, sourceId: string, targetId: string, weight: number): void {
+function addEdge(
+  edgeMap: Map<string, GraphEdge>,
+  sourceId: string,
+  targetId: string,
+  weight: number,
+  color?: [number, number, number, number]
+): void {
   if (weight <= 0) {
     return;
   }
 
-  edgeMap.set(`${sourceId}::${targetId}`, { sourceId, targetId, weight });
+  edgeMap.set(`${sourceId}::${targetId}`, { sourceId, targetId, weight, color });
 }
+
+// Maps card pool names to the corresponding CHARACTER.* node ID.
+// Colorless has no character hub so it maps to null.
+const POOL_CHARACTER_ID: Record<string, string | null> = {
+  ironclad: "CHARACTER.IRONCLAD",
+  silent: "CHARACTER.SILENT",
+  defect: "CHARACTER.DEFECT",
+  necrobinder: "CHARACTER.NECROBINDER",
+  regent: "CHARACTER.REGENT",
+  colorless: null,
+};
+
+const COLORLESS_EDGE_COLOR: [number, number, number, number] = [0.62, 0.62, 0.62, 1];
 
 function withLayoutRadius(node: Omit<GraphNode, "layoutRadius">): GraphNode {
   return {
@@ -576,13 +595,68 @@ function buildCardStatsGraph(loadResult: LoadResult, topN: number, minSupport: n
     detail: `${stat.wins} wins and ${stat.losses} losses, picked ${stat.picked} times, skipped ${stat.skipped} times`,
   }));
 
+  // Group cards by character pool, then build hub nodes + colored edges per pool.
+  const cardsByPool = new Map<string, CardAggregate[]>();
+  for (const stat of cardAggregates) {
+    const pool = getCardPool(stat.id);
+    if (pool === undefined) {
+      continue;
+    }
+    const group = cardsByPool.get(pool) ?? [];
+    group.push(stat);
+    cardsByPool.set(pool, group);
+  }
+
+  // One character hub node per pool that has qualifying cards.
+  const characterNodes: GraphNode[] = [];
+  for (const [pool, group] of cardsByPool) {
+    const characterId = POOL_CHARACTER_ID[pool];
+    if (characterId === null || characterId === undefined || group.length === 0) {
+      continue;
+    }
+    characterNodes.push(
+      withLayoutRadius({
+        id: characterId,
+        label: humanizeToken(characterId),
+        kind: "character",
+        value: group.length,
+        radius: 0.12,
+        color: getCharacterColor(characterId),
+        imageUrl: getCharacterImageUrl(characterId),
+      })
+    );
+  }
+
+  const edgeMap = new Map<string, GraphEdge>();
+  for (const [pool, group] of cardsByPool) {
+    const characterId = POOL_CHARACTER_ID[pool];
+    const edgeColor: [number, number, number, number] =
+      characterId != null ? getCharacterColor(characterId) : COLORLESS_EDGE_COLOR;
+
+    // Hub spoke: character → each card in the pool.
+    if (characterId != null) {
+      for (const stat of group) {
+        addEdge(edgeMap, characterId, stat.id, 2, edgeColor);
+      }
+    }
+
+    // Web: connect each card to its 3 nearest neighbors by win rate within the pool.
+    const sorted = [...group].sort((a, b) => b.winRate - a.winRate);
+    for (let i = 0; i < sorted.length; i++) {
+      for (let j = i + 1; j <= Math.min(sorted.length - 1, i + 3); j++) {
+        addEdge(edgeMap, sorted[i].id, sorted[j].id, 0.5, edgeColor);
+      }
+    }
+  }
+
   return {
     view: "cardStats",
     title: "Card Stats",
     subtitle:
       "Cards are filtered to non-starter pickups, sized by profile win rate, and pulled into tighter same-class clusters for each character pool and Colorless.",
-    nodes,
-    edges: [],
+    nodes: [...characterNodes, ...nodes],
+    edges: [...edgeMap.values()],
+    showEdges: true,
     ranking,
     summaryCards: [
       {

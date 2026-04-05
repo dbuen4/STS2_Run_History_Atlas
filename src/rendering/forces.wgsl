@@ -43,7 +43,7 @@ fn main(@builtin(global_invocation_id) globalId: vec3<u32>) {
             force += direction * attraction;
         } else {
             let overlap = max(desired - dist, 0.0);
-            let repulsion = ((desired * desired) / (dist * dist)) * 0.012 + overlap * 0.55;
+            let repulsion = ((desired * desired) / (dist * dist)) * 0.045 + overlap * 0.55;
             force -= direction * repulsion;
         }
     }
