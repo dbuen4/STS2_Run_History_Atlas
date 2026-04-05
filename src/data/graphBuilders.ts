@@ -508,32 +508,6 @@ function toCardAggregate(stat: ProgressCardStat): CardAggregate {
   };
 }
 
-function buildCardClassLayoutEdges(cardAggregates: CardAggregate[]): GraphEdge[] {
-  const cardIdsByPool = new Map<string, string[]>();
-  const edgeMap = new Map<string, GraphEdge>();
-
-  for (const stat of cardAggregates) {
-    const pool = getCardPool(stat.id);
-    if (!pool) {
-      continue;
-    }
-
-    const cardIds = cardIdsByPool.get(pool) ?? [];
-    cardIds.push(stat.id);
-    cardIdsByPool.set(pool, cardIds);
-  }
-
-  for (const cardIds of cardIdsByPool.values()) {
-    for (let index = 0; index < cardIds.length; index += 1) {
-      for (let otherIndex = index + 1; otherIndex < cardIds.length; otherIndex += 1) {
-        addEdge(edgeMap, cardIds[index], cardIds[otherIndex], 4);
-      }
-    }
-  }
-
-  return [...edgeMap.values()];
-}
-
 function buildCardStatsGraph(loadResult: LoadResult, topN: number, minSupport: number): GraphDataset {
   if (!loadResult.progress) {
     return makeMissingProgressGraph("cardStats", loadResult.runs.length);
@@ -601,7 +575,6 @@ function buildCardStatsGraph(loadResult: LoadResult, topN: number, minSupport: n
     valueLabel: `${formatPercent(stat.winRate)} win rate`,
     detail: `${stat.wins} wins and ${stat.losses} losses, picked ${stat.picked} times, skipped ${stat.skipped} times`,
   }));
-  const layoutEdges = buildCardClassLayoutEdges(cardAggregates);
 
   return {
     view: "cardStats",
@@ -610,8 +583,6 @@ function buildCardStatsGraph(loadResult: LoadResult, topN: number, minSupport: n
       "Cards are filtered to non-starter pickups, sized by profile win rate, and pulled into tighter same-class clusters for each character pool and Colorless.",
     nodes,
     edges: [],
-    layoutEdges,
-    showEdges: false,
     ranking,
     summaryCards: [
       {

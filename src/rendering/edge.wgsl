@@ -6,9 +6,12 @@ struct Node {
 };
 
 struct EdgeSegment {
-    sourcePos: vec2f,
-    targetPos: vec2f,
-    color: vec4f,
+    sourceIndex: u32,
+    targetIndex: u32,
+    colorR: f32,
+    colorG: f32,
+    colorB: f32,
+    colorA: f32,
 };
 
 struct Camera {
@@ -32,29 +35,14 @@ fn vertexMain(
     @builtin(instance_index) instanceIndex: u32
 ) -> VertexOutput {
     let edge = edges[instanceIndex];
-    let delta = edge.targetPos - edge.sourcePos;
-    let segmentLength = length(delta);
-    var direction = vec2f(1.0, 0.0);
-    if (segmentLength > 0.0001) {
-        direction = delta / segmentLength;
-    }
-    let normal = vec2f(-direction.y, direction.x);
-    let halfWidth = 0.008;
-    var quad = array<vec2f, 6>(
-        vec2f(0.0, -1.0),
-        vec2f(0.0, 1.0),
-        vec2f(1.0, 1.0),
-        vec2f(1.0, 1.0),
-        vec2f(1.0, -1.0),
-        vec2f(0.0, -1.0)
-    );
-    let local = quad[vertexIndex];
-    let worldPosition = edge.sourcePos + delta * local.x + normal * local.y * halfWidth;
+    let sourceNode = nodes[edge.sourceIndex];
+    let targetNode = nodes[edge.targetIndex];
+    let worldPosition = select(targetNode.pos, sourceNode.pos, vertexIndex == 0u);
     let viewPosition = (worldPosition - camera.position) / camera.zoom;
 
     var output: VertexOutput;
     output.position = vec4f(viewPosition, 0.0, 1.0);
-    output.color = edge.color;
+    output.color = vec4f(edge.colorR, edge.colorG, edge.colorB, edge.colorA);
     return output;
 }
 

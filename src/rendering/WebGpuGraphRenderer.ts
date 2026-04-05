@@ -29,7 +29,9 @@ interface ImageBinding {
 }
 
 const SHOW_NODE_LABELS = false;
+const ENABLE_EDGE_RENDERING = true;
 const NODE_STRIDE_FLOATS = 8;
+const EDGE_STRIDE = 6; // sourceIndex(u32), targetIndex(u32), r(f32), g(f32), b(f32), a(f32)
 
 class ForceDirectedLayout {
   private readonly adjacencyMatrixBuffer: GPUBuffer;
@@ -627,7 +629,11 @@ export class WebGpuGraphRenderer {
     this.showEdges = graph.showEdges ?? false;
 
     const nodeIndexById = new Map(graph.nodes.map((node, index) => [node.id, index]));
-    const edgeData = new Float32Array(graph.edges.length * 8);
+    // Edge buffer layout: [sourceIndex(u32), targetIndex(u32), r(f32), g(f32), b(f32), a(f32)]
+    // Positions are looked up dynamically from the node buffer in the shader, so edges track moving nodes.
+    const edgeRawBuffer = new ArrayBuffer(Math.max(graph.edges.length * EDGE_STRIDE * 4, 16));
+    const edgeUint32 = new Uint32Array(edgeRawBuffer);
+    const edgeFloat32 = new Float32Array(edgeRawBuffer);
     graph.edges.forEach((edge, index) => {
       const start = nodeIndexById.get(edge.sourceId);
       const end = nodeIndexById.get(edge.targetId);
@@ -635,20 +641,15 @@ export class WebGpuGraphRenderer {
         return;
       }
 
-      const sourceOffset = start * NODE_STRIDE_FLOATS;
-      const targetOffset = end * NODE_STRIDE_FLOATS;
-      const offset = index * 8;
-      edgeData[offset] = nodeData[sourceOffset];
-      edgeData[offset + 1] = nodeData[sourceOffset + 1];
-      edgeData[offset + 2] = nodeData[targetOffset];
-      edgeData[offset + 3] = nodeData[targetOffset + 1];
-      const colorStrength = this.showEdges ? 0.65 : 0.4;
-      edgeData[offset + 4] = (nodeData[sourceOffset + 4] + nodeData[targetOffset + 4]) * colorStrength;
-      edgeData[offset + 5] = (nodeData[sourceOffset + 5] + nodeData[targetOffset + 5]) * colorStrength;
-      edgeData[offset + 6] = (nodeData[sourceOffset + 6] + nodeData[targetOffset + 6]) * colorStrength;
-      edgeData[offset + 7] = this.showEdges
-        ? clamp(0.36 + edge.weight * 0.12, 0.36, 0.82)
-        : clamp(0.18 + edge.weight * 0.08, 0.18, 0.46);
+      const offset = index * EDGE_STRIDE;
+      edgeUint32[offset] = start;
+      edgeUint32[offset + 1] = end;
+      const sn = graph.nodes[start];
+      const en = graph.nodes[end];
+      edgeFloat32[offset + 2] = (sn.color[0] + en.color[0]) * 0.4;
+      edgeFloat32[offset + 3] = (sn.color[1] + en.color[1]) * 0.4;
+      edgeFloat32[offset + 4] = (sn.color[2] + en.color[2]) * 0.4;
+      edgeFloat32[offset + 5] = clamp(0.18 + edge.weight * 0.08, 0.18, 0.46);
     });
 
     this.nodeBuffer = this.device.createBuffer({
@@ -661,11 +662,11 @@ export class WebGpuGraphRenderer {
     this.nodeBufferSize = Math.max(nodeData.byteLength, 32);
 
     this.edgeBuffer = this.device.createBuffer({
-      size: Math.max(edgeData.byteLength, 16),
+      size: Math.max(edgeRawBuffer.byteLength, 16),
       usage: GPUBufferUsage.STORAGE | GPUBufferUsage.COPY_DST,
       mappedAtCreation: true,
     });
-    new Float32Array(this.edgeBuffer.getMappedRange()).set(edgeData);
+    new Uint8Array(this.edgeBuffer.getMappedRange()).set(new Uint8Array(edgeRawBuffer));
     this.edgeBuffer.unmap();
 
     this.nodeReadbackBuffer = this.device.createBuffer({
@@ -685,22 +686,12 @@ export class WebGpuGraphRenderer {
     this.nodeCount = graph.nodes.length;
     this.edgeCount = graph.edges.length;
     this.frameCount = 0;
-
-    const layoutEdges = graph.layoutEdges ?? graph.edges;
-    if (graph.edges.length === 0 || layoutEdges.length > 0) {
-      this.layout = new ForceDirectedLayout(this.device, this.nodeBuffer, graph.nodes, layoutEdges);
-      this.layout.reset(this.device);
-      this.layoutActive = true;
-      this.autoFitEnabled = true;
-      this.autoFitWarmupFrames = 2;
-      this.autoFitReadbacksRemaining = 12;
-    } else {
-      this.layout = null;
-      this.layoutActive = false;
-      this.autoFitEnabled = false;
-      this.autoFitWarmupFrames = 0;
-      this.autoFitReadbacksRemaining = 0;
-    }
+    this.layout = new ForceDirectedLayout(this.device, this.nodeBuffer, graph.nodes, graph.edges);
+    this.layout.reset(this.device);
+    this.layoutActive = true;
+    this.autoFitEnabled = true;
+    this.autoFitWarmupFrames = 2;
+    this.autoFitReadbacksRemaining = 12;
     this.renderLabels();
   }
 
