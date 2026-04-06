@@ -1,9 +1,12 @@
 import { Camera, createCamera, setupCameraControls, stepCamera, worldToCanvas } from "../camera";
+import { rgbaToCssColor } from "../characterPalette";
+import { getCardStatsSectorGuides } from "../cardStatsSectors";
 import { clamp } from "../utils";
 import { GraphDataset, GraphNode } from "../types";
 import edgeShaderCode from "./edge.wgsl";
 import forceShaderCode from "./forces.wgsl";
 import nodeShaderCode from "./node.wgsl";
+import { buildCardStatsLayout, getCardStatsPositions } from "./cardStatsLayout";
 
 interface EdgeInput {
   sourceId: string;
@@ -26,6 +29,14 @@ interface LabelBinding {
 interface ImageBinding {
   nodeIndex: number;
   element: HTMLDivElement;
+}
+
+interface CardStatsGuideBinding {
+  angle: number;
+  startAngle: number;
+  endAngle: number;
+  label: HTMLDivElement;
+  wedge: HTMLDivElement;
 }
 
 const SHOW_NODE_LABELS = false;
@@ -248,93 +259,9 @@ function getProfileOverviewPositions(nodes: GraphNode[]): Array<{ x: number; y: 
   return positions;
 }
 
-/**
- * Hub-spoke layout for Card Stats: character icons are hubs with their cards arranged in a ring around them.
- */
-function getCardStatsPositions(graph: GraphDataset): Array<{ x: number; y: number }> {
-  const nodes = graph.nodes;
-  const edges = graph.edges;
-  const nodeCount = nodes.length;
-  const positions = new Array<{ x: number; y: number }>(nodeCount);
-
-  const nodeIndexById = new Map(nodes.map((n, i) => [n.id, i]));
-  const hubIndices: number[] = [];
-  const hubChildren = new Map<number, number[]>();
-
-  for (let i = 0; i < nodeCount; i++) {
-    if (nodes[i].kind === "character") {
-      hubIndices.push(i);
-      hubChildren.set(i, []);
-    }
-  }
-
-  // Assign cards to their character hub via edges.
-  const assignedToHub = new Set<number>();
-  for (const edge of edges) {
-    const srcIdx = nodeIndexById.get(edge.sourceId);
-    const tgtIdx = nodeIndexById.get(edge.targetId);
-    if (srcIdx === undefined || tgtIdx === undefined) continue;
-
-    if (hubChildren.has(srcIdx) && !assignedToHub.has(tgtIdx)) {
-      hubChildren.get(srcIdx)!.push(tgtIdx);
-      assignedToHub.add(tgtIdx);
-    } else if (hubChildren.has(tgtIdx) && !assignedToHub.has(srcIdx)) {
-      hubChildren.get(tgtIdx)!.push(srcIdx);
-      assignedToHub.add(srcIdx);
-    }
-  }
-
-  // Place hubs in a circle large enough that their card rings don't collide.
-  const hubCount = hubIndices.length;
-  const maxChildren = Math.max(...[...hubChildren.values()].map((c) => c.length), 1);
-  const avgChildLayout =
-    nodes
-      .filter((_, i) => assignedToHub.has(i))
-      .reduce((s, n) => s + n.layoutRadius, 0) / Math.max(assignedToHub.size, 1);
-  const largestOrbit = (maxChildren * avgChildLayout * 2.2) / (2 * Math.PI);
-  const hubCircleRadius = hubCount <= 1 ? 0 : largestOrbit * 2.4 + 0.5;
-
-  for (let i = 0; i < hubCount; i++) {
-    const angle = (2 * Math.PI * i) / hubCount - Math.PI / 2;
-    positions[hubIndices[i]] = {
-      x: hubCircleRadius * Math.cos(angle),
-      y: hubCircleRadius * Math.sin(angle),
-    };
-  }
-
-  // Arrange each hub's cards in a ring around it, sorted largest-first.
-  for (const [hubIdx, children] of hubChildren) {
-    const hubPos = positions[hubIdx];
-    const childCount = children.length;
-    if (childCount === 0) continue;
-
-    children.sort((a, b_) => nodes[b_].radius - nodes[a].radius);
-
-    const avgLayout = children.reduce((s, i) => s + nodes[i].layoutRadius, 0) / childCount;
-    const circumference = childCount * avgLayout * 2.2;
-    const orbitRadius = Math.max(circumference / (2 * Math.PI), avgLayout * 2.5);
-
-    for (let i = 0; i < childCount; i++) {
-      const angle = (2 * Math.PI * i) / childCount;
-      positions[children[i]] = {
-        x: hubPos.x + orbitRadius * Math.cos(angle),
-        y: hubPos.y + orbitRadius * Math.sin(angle),
-      };
-    }
-  }
-
-  // Fallback for any unassigned nodes (e.g. colorless cards with no hub).
-  for (let i = 0; i < nodeCount; i++) {
-    if (!positions[i]) {
-      positions[i] = { x: 0, y: 0 };
-    }
-  }
-
-  return positions;
-}
-
 export class WebGpuGraphRenderer {
   private readonly canvas: HTMLCanvasElement;
+  private readonly guideLayer: HTMLDivElement | null;
   private readonly labelLayer: HTMLDivElement | null;
   private readonly noWebGpuMessage: (message: string) => void;
   private device: GPUDevice | null = null;
@@ -353,6 +280,8 @@ export class WebGpuGraphRenderer {
   private layout: ForceDirectedLayout | null = null;
   private layoutActive: boolean = false;
   private animationHandle: number | null = null;
+  private guideBindings: CardStatsGuideBinding[] = [];
+  private guideWorldRadius: number = 0;
   private imageBindings: ImageBinding[] = [];
   private labelBindings: LabelBinding[] = [];
   private nodeSnapshot: Float32Array = new Float32Array();
@@ -369,10 +298,12 @@ export class WebGpuGraphRenderer {
 
   constructor(
     canvas: HTMLCanvasElement,
+    guideLayer: HTMLDivElement | null,
     labelLayer: HTMLDivElement | null,
     noWebGpuMessage: (message: string) => void
   ) {
     this.canvas = canvas;
+    this.guideLayer = guideLayer;
     this.labelLayer = labelLayer;
     this.noWebGpuMessage = noWebGpuMessage;
   }
@@ -508,6 +439,108 @@ export class WebGpuGraphRenderer {
       0,
       new Float32Array([this.camera.x, this.camera.y, this.camera.zoom, 0])
     );
+  }
+
+  private clearCardStatsGuides(): void {
+    this.guideBindings = [];
+    this.guideWorldRadius = 0;
+    if (this.guideLayer) {
+      this.guideLayer.replaceChildren();
+      this.guideLayer.hidden = true;
+    }
+  }
+
+  private createCardStatsGuides(graph: GraphDataset, guideWorldRadius: number): void {
+    if (!this.guideLayer) {
+      return;
+    }
+
+    if (graph.view !== "cardStats") {
+      this.clearCardStatsGuides();
+      return;
+    }
+
+    const guideBindings = getCardStatsSectorGuides().map((guide) => {
+      const wedge = document.createElement("div");
+      wedge.style.position = "absolute";
+      wedge.style.inset = "0";
+      wedge.style.background = rgbaToCssColor([guide.color[0], guide.color[1], guide.color[2], 0.12]);
+
+      const label = document.createElement("div");
+      label.className = "card-stats-guide-label";
+      label.textContent = guide.label;
+      label.style.borderColor = rgbaToCssColor([guide.color[0], guide.color[1], guide.color[2], 0.18]);
+      label.style.background = rgbaToCssColor([1, 0.99, 0.97, 0.74]);
+
+      return {
+        angle: guide.angle,
+        startAngle: guide.startAngle,
+        endAngle: guide.endAngle,
+        label,
+        wedge,
+      };
+    });
+
+    this.guideBindings = guideBindings;
+    this.guideWorldRadius = guideWorldRadius;
+    this.guideLayer.hidden = false;
+    this.guideLayer.replaceChildren(
+      ...guideBindings.map((binding) => binding.wedge),
+      ...guideBindings.map((binding) => binding.label)
+    );
+    this.renderCardStatsGuides();
+  }
+
+  private renderCardStatsGuides(): void {
+    if (!this.guideLayer || this.guideBindings.length === 0 || this.guideWorldRadius <= 0) {
+      return;
+    }
+
+    const labelRadius = this.guideWorldRadius * 0.82;
+    const center = worldToCanvas(0, 0, this.camera, this.canvas);
+
+    for (const binding of this.guideBindings) {
+      const arcAngles = [
+        binding.startAngle,
+        binding.startAngle + (binding.endAngle - binding.startAngle) * 0.33,
+        binding.startAngle + (binding.endAngle - binding.startAngle) * 0.66,
+        binding.endAngle,
+      ];
+      const arcPoints = arcAngles.map((angle) =>
+        worldToCanvas(
+          Math.cos(angle) * this.guideWorldRadius,
+          Math.sin(angle) * this.guideWorldRadius,
+          this.camera,
+          this.canvas
+        )
+      );
+      const polygon = [
+        `${center.x}px ${center.y}px`,
+        ...arcPoints.map((point) => `${point.x}px ${point.y}px`),
+      ];
+
+      binding.wedge.style.clipPath = `polygon(${polygon.join(", ")})`;
+
+      const labelCenter = worldToCanvas(
+        Math.cos(binding.angle) * labelRadius,
+        Math.sin(binding.angle) * labelRadius,
+        this.camera,
+        this.canvas
+      );
+      const labelVisible =
+        labelCenter.x >= -80 &&
+        labelCenter.x <= this.canvas.clientWidth + 80 &&
+        labelCenter.y >= -24 &&
+        labelCenter.y <= this.canvas.clientHeight + 24;
+
+      binding.label.style.display = labelVisible ? "block" : "none";
+      if (!labelVisible) {
+        continue;
+      }
+
+      binding.label.style.left = `${labelCenter.x}px`;
+      binding.label.style.top = `${labelCenter.y}px`;
+    }
   }
 
   private clearLabels(): void {
@@ -716,6 +749,7 @@ export class WebGpuGraphRenderer {
             this.autoFitEnabled = false;
           }
         }
+        this.renderCardStatsGuides();
         this.renderLabels();
       })
       .catch(() => {
@@ -744,6 +778,7 @@ export class WebGpuGraphRenderer {
     this.camera.lastMouseX = 0;
     this.camera.lastMouseY = 0;
     this.updateCameraBuffer();
+    this.renderCardStatsGuides();
     this.renderLabels();
   }
 
@@ -776,12 +811,27 @@ export class WebGpuGraphRenderer {
       this.autoFitWarmupFrames = 0;
       this.autoFitReadbacksRemaining = 0;
       this.showEdges = false;
+      this.clearCardStatsGuides();
       this.clearLabels();
       this.resetCamera();
       return;
     }
 
-    const positions = getInitialPositions(graph);
+    let positions = getInitialPositions(graph);
+    let guideWorldRadius = 0;
+    if (graph.view === "cardStats") {
+      const cardStatsLayout = buildCardStatsLayout(graph);
+      positions = cardStatsLayout.positions;
+      guideWorldRadius =
+        Math.max(
+          ...cardStatsLayout.groupLayouts.map(
+            (layout) => Math.hypot(layout.center.x, layout.center.y) + layout.radius
+          ),
+          1.8
+        ) + 0.9;
+    } else {
+      this.clearCardStatsGuides();
+    }
     const nodeData = new Float32Array(graph.nodes.length * NODE_STRIDE_FLOATS);
     graph.nodes.forEach((node, index) => {
       const offset = index * NODE_STRIDE_FLOATS;
@@ -796,6 +846,9 @@ export class WebGpuGraphRenderer {
     });
     this.nodeSnapshot = nodeData.slice();
     this.applyCameraFitFromNodeData(this.nodeSnapshot, graph.nodes.length);
+    if (graph.view === "cardStats") {
+      this.createCardStatsGuides(graph, guideWorldRadius);
+    }
     this.createLabels(graph.nodes);
     this.showEdges = graph.showEdges ?? false;
 
@@ -907,10 +960,10 @@ export class WebGpuGraphRenderer {
         {
           view: this.context.getCurrentTexture().createView(),
           clearValue: {
-            r: 0.96,
-            g: 0.93,
-            b: 0.88,
-            a: 1,
+            r: 0,
+            g: 0,
+            b: 0,
+            a: 0,
           },
           loadOp: "clear",
           storeOp: "store",
@@ -940,7 +993,8 @@ export class WebGpuGraphRenderer {
     if (queuedReadback) {
       this.requestNodeReadback(this.graphVersion);
     }
-    if (cameraChanged || this.labelBindings.length > 0 || this.imageBindings.length > 0) {
+    if (cameraChanged || this.guideBindings.length > 0 || this.labelBindings.length > 0 || this.imageBindings.length > 0) {
+      this.renderCardStatsGuides();
       this.renderLabels();
     }
   }

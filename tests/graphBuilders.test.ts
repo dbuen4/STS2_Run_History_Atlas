@@ -183,7 +183,7 @@ describe("graphBuilders", () => {
 
     expect(graph.nodes.some((node) => node.label === "Knowledge Demon")).toBe(true);
     expect(graph.nodes.some((node) => node.label === "Doormaker")).toBe(true);
-    expect(graph.edges).toHaveLength(2);
+    expect(graph.edges).toHaveLength(0);
     expect(graph.nodes.every((node) => node.kind !== "character")).toBe(true);
     expect(graph.ranking.every((entry) => !entry.label.endsWith(" Boss"))).toBe(true);
 
@@ -308,10 +308,11 @@ describe("graphBuilders", () => {
 
     expect(graph.ranking[0].label).toBe("Offering");
     expect(graph.ranking[0].valueLabel).toBe("100% win rate");
-    expect(graph.nodes).toHaveLength(graph.ranking.length);
-    expect(graph.edges).toHaveLength(0);
-    expect(graph.showEdges).toBe(false);
-    expect(graph.nodes.every((node) => node.kind === "card")).toBe(true);
+    expect(graph.showEdges).toBe(true);
+    expect(graph.nodes.some((node) => node.kind === "character")).toBe(true);
+    expect(graph.nodes.filter((node) => node.kind === "card")).toHaveLength(graph.ranking.length);
+    expect(graph.edges.length).toBeGreaterThan(0);
+    expect(graph.edges.every((edge) => edge.sourceId.startsWith("CHARACTER."))).toBe(true);
 
     const cardNode = graph.nodes.find((node) => node.id === "CARD.OFFERING");
     expect(cardNode?.layoutRadius).toBeGreaterThan(cardNode?.radius ?? 0);
@@ -325,17 +326,31 @@ describe("graphBuilders", () => {
     expect(offeringNode?.imageUrl).toBeTruthy();
   });
 
-  it("adds stronger hidden layout links so cards cluster by class and colorless pool", () => {
+  it("adds visible class spokes for qualifying non-colorless cards", () => {
     const graph = build("cardStats", cardClusterLoad, { topN: 5, minSupport: 2 });
-    const layoutEdges = graph.layoutEdges ?? [];
 
-    expect(graph.edges).toHaveLength(0);
-    expect(graph.showEdges).toBe(false);
+    expect(graph.showEdges).toBe(true);
     expect(getCardPool("CARD.OFFERING")).toBe("ironclad");
     expect(getCardPool("CARD.FLASH_OF_STEEL")).toBe("colorless");
-    expect(layoutEdges).toEqual([
-      { sourceId: "CARD.OFFERING", targetId: "CARD.PYRE", weight: 4 },
-      { sourceId: "CARD.FLASH_OF_STEEL", targetId: "CARD.SECRET_WEAPON", weight: 4 },
+    expect(graph.edges).toEqual([
+      {
+        sourceId: "CHARACTER.IRONCLAD",
+        targetId: "CARD.OFFERING",
+        weight: 2,
+        color: getCharacterColor("CHARACTER.IRONCLAD"),
+      },
+      {
+        sourceId: "CHARACTER.IRONCLAD",
+        targetId: "CARD.PYRE",
+        weight: 2,
+        color: getCharacterColor("CHARACTER.IRONCLAD"),
+      },
+      {
+        sourceId: "CHARACTER.NECROBINDER",
+        targetId: "CARD.FEAR",
+        weight: 2,
+        color: getCharacterColor("CHARACTER.NECROBINDER"),
+      },
     ]);
   });
 

@@ -361,7 +361,7 @@ function updateControlNote(view: GraphView): void {
     topNInput.disabled = false;
     minSupportInput.disabled = false;
     note.textContent =
-      "Card Stats uses progress.save, ranks non-starter pickups by win rate, and filters by Minimum Node Support.";
+      "Card Stats uses progress.save, keeps Max Nodes global, segments cards into five class sectors, and centers Colorless cards.";
   } else if (view === "encounterStats") {
     topNInput.disabled = false;
     minSupportInput.disabled = true;
@@ -461,6 +461,7 @@ function parseFilesInWorker(files: File[]): Promise<LoadResult> {
 
 async function main(): Promise<void> {
   const canvas = document.getElementById("webgpu-canvas") as HTMLCanvasElement | null;
+  const cardStatsGuideLayer = document.getElementById("card-stats-guide-layer") as HTMLDivElement | null;
   const nodeLabelLayer = document.getElementById("node-label-layer") as HTMLDivElement | null;
   const loadButton = document.getElementById("load-folder-btn") as HTMLButtonElement | null;
   const loadHistoryFilesButton = document.getElementById(
@@ -506,7 +507,9 @@ async function main(): Promise<void> {
     legendOffset: 0,
   };
 
-  const renderer = new WebGpuGraphRenderer(canvas, nodeLabelLayer, (message) => setError(message));
+  const renderer = new WebGpuGraphRenderer(canvas, cardStatsGuideLayer, nodeLabelLayer, (message) =>
+    setError(message)
+  );
   await renderer.initialize();
   updateControlNote((viewSelect.value ?? "profileOverview") as GraphView);
   renderAwaitingGeneration(state, renderer);

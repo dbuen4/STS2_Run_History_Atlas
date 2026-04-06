@@ -211,6 +211,34 @@
         width: 100%;
         height: 100%;
         touch-action: none;
+        position: relative;
+        z-index: 1;
+      }
+
+      .card-stats-guide-layer {
+        position: absolute;
+        inset: 0;
+        pointer-events: none;
+        overflow: hidden;
+        z-index: 0;
+      }
+
+      .card-stats-guide-label {
+        position: absolute;
+        left: 0;
+        top: 0;
+        transform: translate(-50%, -50%);
+        padding: 6px 10px;
+        border-radius: 999px;
+        border: 1px solid rgba(112, 83, 56, 0.16);
+        background: rgba(255, 252, 246, 0.76);
+        color: #4d3926;
+        font-size: 0.76rem;
+        font-weight: 700;
+        letter-spacing: 0.08em;
+        text-transform: uppercase;
+        text-shadow: 0 1px 0 rgba(255, 255, 255, 0.72);
+        box-shadow: 0 6px 14px rgba(88, 58, 32, 0.08);
       }
 
       .node-label-layer {
@@ -218,6 +246,7 @@
         inset: 0;
         pointer-events: none;
         overflow: hidden;
+        z-index: 2;
       }
 
       .node-image {
@@ -278,6 +307,7 @@
         border: 1px solid rgba(111, 76, 45, 0.16);
         color: var(--muted);
         font-size: 0.88rem;
+        z-index: 3;
       }
 
       .summary-grid {
@@ -489,4 +519,4 @@
         .canvas-wrap {
           width: 100%;
         }
-      }</style><script defer="defer" src="main.js"></script></head><body><div class="app-shell"><aside class="panel left-panel"><div class="hero"><p class="eyebrow">Slay The Spire 2</p><h1>Run History Atlas</h1><p class="subtitle">Load a save-history folder, choose the graph you want to inspect, and generate a view with the node limits that fit your archive.</p></div><section class="control-group"><h2>Data</h2><div class="button-row"><button id="load-folder-btn" class="primary-button">Load Saves Folder</button> <button id="load-history-files-btn" class="secondary-button">Load History Files</button> <button id="load-progress-file-btn" class="secondary-button">Add progress.save</button> <button id="reset-camera-btn" class="secondary-button">Reset Camera</button></div><input id="history-files-input" type="file" accept=".run" multiple="multiple" hidden/> <input id="progress-file-input" type="file" accept=".save" hidden/><div id="load-status" class="status-pill">Waiting for a profile saves folder.</div><p class="support-note">If Chromium blocks the save folder because it lives in a protected AppData path, load the `.run` files from `history` first, then add `progress.save`.</p><div id="error-banner" class="error-banner"></div></section><section class="control-group"><h2>Graph Generator</h2><div class="field"><label for="view-select">Graph type</label> <select id="view-select"><option value="profileOverview">Profile Overview</option><option value="bossDeaths">Boss Deaths</option><option value="relicWinRate">Relic Win Rate</option><option value="cardStats">Card Stats</option><option value="encounterStats">Encounter Stats</option></select></div><div class="field"><label for="top-n-input">Max nodes</label> <input id="top-n-input" type="number" min="3" max="24" step="1" value="12"/></div><div class="field"><label for="min-support-input">Minimum node support</label> <input id="min-support-input" type="number" min="1" max="30" step="1" value="5"/></div><button id="generate-graph-btn" class="primary-button">Generate Graph</button><p class="support-note" id="control-note">Choose a graph type, set the node limits, then click Generate Graph.</p></section></aside><main class="panel canvas-panel"><div class="canvas-header"><div><p class="eyebrow" id="graph-eyebrow">Impact Graph</p><h2 id="graph-title">Load data to begin</h2></div><div class="canvas-meta" id="graph-subtitle">Load data, choose a graph type and node limits, then click Generate Graph.</div></div><div class="canvas-wrap"><canvas id="webgpu-canvas"></canvas><div id="node-label-layer" class="node-label-layer" aria-hidden="true"></div><div class="canvas-overlay">Drag to pan. Scroll to zoom. Reset Camera restores the graph fit.</div></div></main><aside class="panel right-panel"><section class="summary-block"><h2>Summary</h2><div id="summary-grid" class="summary-grid"><div class="summary-card"><div class="summary-label">Status</div><div class="summary-value">No Data</div></div></div></section><section id="node-legend-section" class="summary-block" style="margin-top: 18px;" hidden><div class="legend-header"><h2>Node Legend</h2><div class="legend-nav" aria-label="Legend navigation"><button id="legend-up-btn" class="secondary-button legend-nav-button" type="button" aria-label="Show previous legend entries">&uarr;</button> <span id="legend-page-status" class="legend-status" aria-live="polite">0 of 0</span> <button id="legend-down-btn" class="secondary-button legend-nav-button" type="button" aria-label="Show next legend entries">&darr;</button></div></div><p id="node-legend-note" class="legend-note">Loaded graph nodes will appear here.</p><ul id="node-legend" class="legend-list"><li class="legend-item empty-state">Loaded graph nodes will appear here with their current colors.</li></ul></section><section class="summary-block" style="margin-top: 18px;"><h2>Warnings</h2><ul id="warning-list" class="warning-list"><li class="warning-item">Malformed or missing files will appear here after a load.</li></ul></section><section class="ranking-block" style="margin-top: 18px;"><h2>Rankings</h2><ul id="ranking-list" class="ranking-list"><li class="ranking-item empty-state">Load a folder to see the ranked labels and exact values behind the graph.</li></ul></section></aside></div></body></html>
+      }</style><script defer="defer" src="main.js"></script></head><body><div class="app-shell"><aside class="panel left-panel"><div class="hero"><p class="eyebrow">Slay The Spire 2</p><h1>Run History Atlas</h1><p class="subtitle">Load a save-history folder, choose the graph you want to inspect, and generate a view with the node limits that fit your archive.</p></div><section class="control-group"><h2>Data</h2><div class="button-row"><button id="load-folder-btn" class="primary-button">Load Saves Folder</button> <button id="load-history-files-btn" class="secondary-button">Load History Files</button> <button id="load-progress-file-btn" class="secondary-button">Add progress.save</button> <button id="reset-camera-btn" class="secondary-button">Reset Camera</button></div><input id="history-files-input" type="file" accept=".run" multiple="multiple" hidden/> <input id="progress-file-input" type="file" accept=".save" hidden/><div id="load-status" class="status-pill">Waiting for a profile saves folder.</div><p class="support-note">If Chromium blocks the save folder because it lives in a protected AppData path, load the `.run` files from `history` first, then add `progress.save`.</p><div id="error-banner" class="error-banner"></div></section><section class="control-group"><h2>Graph Generator</h2><div class="field"><label for="view-select">Graph type</label> <select id="view-select"><option value="profileOverview">Profile Overview</option><option value="bossDeaths">Boss Deaths</option><option value="relicWinRate">Relic Win Rate</option><option value="cardStats">Card Stats</option><option value="encounterStats">Encounter Stats</option></select></div><div class="field"><label for="top-n-input">Max nodes</label> <input id="top-n-input" type="number" min="3" max="24" step="1" value="12"/></div><div class="field"><label for="min-support-input">Minimum node support</label> <input id="min-support-input" type="number" min="1" max="30" step="1" value="5"/></div><button id="generate-graph-btn" class="primary-button">Generate Graph</button><p class="support-note" id="control-note">Choose a graph type, set the node limits, then click Generate Graph.</p></section></aside><main class="panel canvas-panel"><div class="canvas-header"><div><p class="eyebrow" id="graph-eyebrow">Impact Graph</p><h2 id="graph-title">Load data to begin</h2></div><div class="canvas-meta" id="graph-subtitle">Load data, choose a graph type and node limits, then click Generate Graph.</div></div><div class="canvas-wrap"><div id="card-stats-guide-layer" class="card-stats-guide-layer" aria-hidden="true"></div><canvas id="webgpu-canvas"></canvas><div id="node-label-layer" class="node-label-layer" aria-hidden="true"></div><div class="canvas-overlay">Drag to pan. Scroll to zoom. Reset Camera restores the graph fit.</div></div></main><aside class="panel right-panel"><section class="summary-block"><h2>Summary</h2><div id="summary-grid" class="summary-grid"><div class="summary-card"><div class="summary-label">Status</div><div class="summary-value">No Data</div></div></div></section><section id="node-legend-section" class="summary-block" style="margin-top: 18px;" hidden><div class="legend-header"><h2>Node Legend</h2><div class="legend-nav" aria-label="Legend navigation"><button id="legend-up-btn" class="secondary-button legend-nav-button" type="button" aria-label="Show previous legend entries">&uarr;</button> <span id="legend-page-status" class="legend-status" aria-live="polite">0 of 0</span> <button id="legend-down-btn" class="secondary-button legend-nav-button" type="button" aria-label="Show next legend entries">&darr;</button></div></div><p id="node-legend-note" class="legend-note">Loaded graph nodes will appear here.</p><ul id="node-legend" class="legend-list"><li class="legend-item empty-state">Loaded graph nodes will appear here with their current colors.</li></ul></section><section class="summary-block" style="margin-top: 18px;"><h2>Warnings</h2><ul id="warning-list" class="warning-list"><li class="warning-item">Malformed or missing files will appear here after a load.</li></ul></section><section class="ranking-block" style="margin-top: 18px;"><h2>Rankings</h2><ul id="ranking-list" class="ranking-list"><li class="ranking-item empty-state">Load a folder to see the ranked labels and exact values behind the graph.</li></ul></section></aside></div></body></html>

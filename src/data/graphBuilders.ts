@@ -12,6 +12,7 @@ import {
   RunSummary,
 } from "../types";
 import { getBossImageUrl, isBossEncounterId } from "../bossImageCatalog";
+import { getCardStatsCharacterIdForPool } from "../cardStatsSectors";
 import { getCardPool } from "../cardClassCatalog";
 import { getCardImageUrl } from "../cardImageCatalog";
 import { getEncounterImageUrl } from "../encounterImageCatalog";
@@ -94,20 +95,7 @@ function addEdge(
   edgeMap.set(`${sourceId}::${targetId}`, { sourceId, targetId, weight, color });
 }
 
-// Maps card pool names to the corresponding CHARACTER.* node ID.
-// Colorless has no character hub so it maps to null.
-const POOL_CHARACTER_ID: Record<string, string | null> = {
-  ironclad: "CHARACTER.IRONCLAD",
-  silent: "CHARACTER.SILENT",
-  defect: "CHARACTER.DEFECT",
-  necrobinder: "CHARACTER.NECROBINDER",
-  regent: "CHARACTER.REGENT",
-  colorless: null,
-};
-
 const COLORLESS_EDGE_COLOR: [number, number, number, number] = [0.62, 0.62, 0.62, 1];
-
-
 
 function withLayoutRadius(node: Omit<GraphNode, "layoutRadius">): GraphNode {
   return {
@@ -157,7 +145,7 @@ function makeMissingProgressGraph(view: GraphView, runCount: number): GraphDatas
       cardStats: {
         title: "Card Stats",
         subtitle:
-          "Card effectiveness uses progress.save aggregates. Select the profile saves folder instead of only history.",
+          "Card effectiveness uses progress.save aggregates, including the five class sectors and centered Colorless grouping.",
       },
       encounterStats: {
         title: "Encounter Stats",
@@ -509,40 +497,6 @@ function toCardAggregate(stat: ProgressCardStat): CardAggregate {
   };
 }
 
-function buildCardClassLayoutEdges(cardAggregates: CardAggregate[]): GraphEdge[] {
-  const cardIdsByPool = new Map<string, string[]>();
-
-  for (const stat of cardAggregates) {
-    const pool = getCardPool(stat.id);
-    if (!pool) {
-      continue;
-    }
-
-    const ids = cardIdsByPool.get(pool);
-    if (ids) {
-      ids.push(stat.id);
-    } else {
-      cardIdsByPool.set(pool, [stat.id]);
-    }
-  }
-
-  const edges: GraphEdge[] = [];
-
-  for (const ids of cardIdsByPool.values()) {
-    for (let sourceIndex = 0; sourceIndex < ids.length; sourceIndex += 1) {
-      for (let targetIndex = sourceIndex + 1; targetIndex < ids.length; targetIndex += 1) {
-        edges.push({
-          sourceId: ids[sourceIndex],
-          targetId: ids[targetIndex],
-          weight: 4,
-        });
-      }
-    }
-  }
-
-  return edges;
-}
-
 function buildCardStatsGraph(loadResult: LoadResult, topN: number, minSupport: number): GraphDataset {
   if (!loadResult.progress) {
     return makeMissingProgressGraph("cardStats", loadResult.runs.length);
@@ -586,14 +540,12 @@ function buildCardStatsGraph(loadResult: LoadResult, topN: number, minSupport: n
         { label: "Min Support", value: String(minSupport) },
         { label: "Action", value: "Lower Threshold" },
       ],
-      layoutEdges: [],
       showEdges: false,
       warnings: [`No cards with at least ${minSupport} tracked wins or losses were found.`],
     };
   }
 
   const maxWinRate = Math.max(...cardAggregates.map((stat) => stat.winRate), 0.01);
-  const layoutEdges = buildCardClassLayoutEdges(cardAggregates);
   const nodes: GraphNode[] = cardAggregates.map((stat) =>
     withLayoutRadius({
       id: stat.id,
@@ -629,7 +581,7 @@ function buildCardStatsGraph(loadResult: LoadResult, topN: number, minSupport: n
   // One character hub node per pool that has qualifying cards.
   const characterNodes: GraphNode[] = [];
   for (const [pool, group] of cardsByPool) {
-    const characterId = POOL_CHARACTER_ID[pool];
+    const characterId = getCardStatsCharacterIdForPool(pool);
     if (characterId === null || characterId === undefined || group.length === 0) {
       continue;
     }
@@ -648,7 +600,7 @@ function buildCardStatsGraph(loadResult: LoadResult, topN: number, minSupport: n
 
   const edgeMap = new Map<string, GraphEdge>();
   for (const [pool, group] of cardsByPool) {
-    const characterId = POOL_CHARACTER_ID[pool];
+    const characterId = getCardStatsCharacterIdForPool(pool);
     const edgeColor: [number, number, number, number] =
       characterId != null ? getCharacterColor(characterId) : COLORLESS_EDGE_COLOR;
 
@@ -664,7 +616,7 @@ function buildCardStatsGraph(loadResult: LoadResult, topN: number, minSupport: n
     view: "cardStats",
     title: "Card Stats",
     subtitle:
-      "Cards are filtered to non-starter pickups, sized by profile win rate, and pulled into tighter same-class clusters for each character pool and Colorless.",
+      "Cards are filtered to non-starter pickups, sized by profile win rate, arranged into five fixed class sectors, and keep Colorless cards in a centered cluster.",
     nodes: [...characterNodes, ...nodes],
     edges: [...edgeMap.values()],
     showEdges: true,
