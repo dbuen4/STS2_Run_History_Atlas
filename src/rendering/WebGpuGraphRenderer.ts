@@ -147,26 +147,165 @@ function createBlendState(): GPUBlendState {
   };
 }
 
-function getInitialPositions(nodes: RenderNodeInput[]): Array<{ x: number; y: number }> {
+function getInitialPositions(graph: GraphDataset): Array<{ x: number; y: number }> {
+  const nodes = graph.nodes;
   const nodeCount = nodes.length;
   if (nodeCount === 0) return [];
   if (nodeCount === 1) return [{ x: 0, y: 0 }];
 
-  // Simple grid: nodes placed left-to-right, top-to-bottom, centered at origin.
-  const cols = Math.ceil(Math.sqrt(nodeCount));
-  const rows = Math.ceil(nodeCount / cols);
-  const maxLayoutRadius = Math.max(...nodes.map((n) => n.layoutRadius));
-  const spacing = maxLayoutRadius * 2.5;
+  if (graph.view === "cardStats") {
+    return getCardStatsPositions(graph);
+  }
 
+  return getSpiralPositions(nodes);
+}
+
+/**
+ * Archimedean spiral layout: largest nodes placed at the center, smallest at the outer edge.
+ * Checks each placement against ALL previously placed nodes to prevent overlap.
+ */
+function getSpiralPositions(nodes: GraphNode[]): Array<{ x: number; y: number }> {
+  const nodeCount = nodes.length;
   const positions = new Array<{ x: number; y: number }>(nodeCount);
-  for (let i = 0; i < nodeCount; i++) {
-    const col = i % cols;
-    const row = Math.floor(i / cols);
-    positions[i] = {
-      x: (col - (cols - 1) / 2) * spacing,
-      y: (row - (rows - 1) / 2) * spacing,
+
+  // Sort indices by radius descending so the biggest node lands at the spiral center.
+  const sortedIndices = nodes
+    .map((_, i) => i)
+    .sort((a, b) => nodes[b].radius - nodes[a].radius);
+
+  positions[sortedIndices[0]] = { x: 0, y: 0 };
+
+  // Arm spacing derived from the largest node so adjacent arms never collide.
+  const maxLayoutRadius = Math.max(...nodes.map((n) => n.layoutRadius));
+  const b = (maxLayoutRadius * 1.5) / Math.PI;
+  const gap = maxLayoutRadius * 0.4;
+  let angle = 0;
+
+  for (let i = 1; i < nodeCount; i++) {
+    const nodeIdx = sortedIndices[i];
+    const nodeLayout = nodes[nodeIdx].layoutRadius;
+
+    // Initial angle advance based on previous consecutive node.
+    const prevIdx = sortedIndices[i - 1];
+    const minDist = nodeLayout + nodes[prevIdx].layoutRadius + gap;
+    const currentR = Math.max(b * angle, minDist * 0.5);
+    angle += minDist / currentR;
+
+    // Collision check against every already-placed node; advance if overlapping.
+    let r = b * angle;
+    for (let attempt = 0; attempt < 60; attempt++) {
+      const x = r * Math.cos(angle);
+      const y = r * Math.sin(angle);
+      let overlapping = false;
+
+      for (let j = 0; j < i; j++) {
+        const otherIdx = sortedIndices[j];
+        const other = positions[otherIdx];
+        const dx = x - other.x;
+        const dy = y - other.y;
+        const dist = Math.sqrt(dx * dx + dy * dy);
+        if (dist < nodeLayout + nodes[otherIdx].layoutRadius + gap * 0.5) {
+          overlapping = true;
+          break;
+        }
+      }
+
+      if (!overlapping) break;
+      angle += 0.2;
+      r = b * angle;
+    }
+
+    positions[nodeIdx] = {
+      x: r * Math.cos(angle),
+      y: r * Math.sin(angle),
     };
   }
+
+  return positions;
+}
+
+/**
+ * Hub-spoke layout for Card Stats: character icons are hubs with their cards arranged in a ring around them.
+ */
+function getCardStatsPositions(graph: GraphDataset): Array<{ x: number; y: number }> {
+  const nodes = graph.nodes;
+  const edges = graph.edges;
+  const nodeCount = nodes.length;
+  const positions = new Array<{ x: number; y: number }>(nodeCount);
+
+  const nodeIndexById = new Map(nodes.map((n, i) => [n.id, i]));
+  const hubIndices: number[] = [];
+  const hubChildren = new Map<number, number[]>();
+
+  for (let i = 0; i < nodeCount; i++) {
+    if (nodes[i].kind === "character") {
+      hubIndices.push(i);
+      hubChildren.set(i, []);
+    }
+  }
+
+  // Assign cards to their character hub via edges.
+  const assignedToHub = new Set<number>();
+  for (const edge of edges) {
+    const srcIdx = nodeIndexById.get(edge.sourceId);
+    const tgtIdx = nodeIndexById.get(edge.targetId);
+    if (srcIdx === undefined || tgtIdx === undefined) continue;
+
+    if (hubChildren.has(srcIdx) && !assignedToHub.has(tgtIdx)) {
+      hubChildren.get(srcIdx)!.push(tgtIdx);
+      assignedToHub.add(tgtIdx);
+    } else if (hubChildren.has(tgtIdx) && !assignedToHub.has(srcIdx)) {
+      hubChildren.get(tgtIdx)!.push(srcIdx);
+      assignedToHub.add(srcIdx);
+    }
+  }
+
+  // Place hubs in a circle large enough that their card rings don't collide.
+  const hubCount = hubIndices.length;
+  const maxChildren = Math.max(...[...hubChildren.values()].map((c) => c.length), 1);
+  const avgChildLayout =
+    nodes
+      .filter((_, i) => assignedToHub.has(i))
+      .reduce((s, n) => s + n.layoutRadius, 0) / Math.max(assignedToHub.size, 1);
+  const largestOrbit = (maxChildren * avgChildLayout * 2.2) / (2 * Math.PI);
+  const hubCircleRadius = hubCount <= 1 ? 0 : largestOrbit * 2.4 + 0.5;
+
+  for (let i = 0; i < hubCount; i++) {
+    const angle = (2 * Math.PI * i) / hubCount - Math.PI / 2;
+    positions[hubIndices[i]] = {
+      x: hubCircleRadius * Math.cos(angle),
+      y: hubCircleRadius * Math.sin(angle),
+    };
+  }
+
+  // Arrange each hub's cards in a ring around it, sorted largest-first.
+  for (const [hubIdx, children] of hubChildren) {
+    const hubPos = positions[hubIdx];
+    const childCount = children.length;
+    if (childCount === 0) continue;
+
+    children.sort((a, b_) => nodes[b_].radius - nodes[a].radius);
+
+    const avgLayout = children.reduce((s, i) => s + nodes[i].layoutRadius, 0) / childCount;
+    const circumference = childCount * avgLayout * 2.2;
+    const orbitRadius = Math.max(circumference / (2 * Math.PI), avgLayout * 2.5);
+
+    for (let i = 0; i < childCount; i++) {
+      const angle = (2 * Math.PI * i) / childCount;
+      positions[children[i]] = {
+        x: hubPos.x + orbitRadius * Math.cos(angle),
+        y: hubPos.y + orbitRadius * Math.sin(angle),
+      };
+    }
+  }
+
+  // Fallback for any unassigned nodes (e.g. colorless cards with no hub).
+  for (let i = 0; i < nodeCount; i++) {
+    if (!positions[i]) {
+      positions[i] = { x: 0, y: 0 };
+    }
+  }
+
   return positions;
 }
 
@@ -618,7 +757,7 @@ export class WebGpuGraphRenderer {
       return;
     }
 
-    const positions = getInitialPositions(graph.nodes);
+    const positions = getInitialPositions(graph);
     const nodeData = new Float32Array(graph.nodes.length * NODE_STRIDE_FLOATS);
     graph.nodes.forEach((node, index) => {
       const offset = index * NODE_STRIDE_FLOATS;
@@ -634,7 +773,7 @@ export class WebGpuGraphRenderer {
     this.nodeSnapshot = nodeData.slice();
     this.applyCameraFitFromNodeData(this.nodeSnapshot, graph.nodes.length);
     this.createLabels(graph.nodes);
-    this.showEdges = false;
+    this.showEdges = graph.showEdges ?? false;
 
     const nodeIndexById = new Map(graph.nodes.map((node, index) => [node.id, index]));
     // Edge buffer layout: [sourceIndex(u32), targetIndex(u32), r(f32), g(f32), b(f32), a(f32)]
