@@ -125,4 +125,21 @@ describe("cardStatsLayout", () => {
     expect(Math.abs(angleDelta(ironcladAngle, guideById.get("CHARACTER.IRONCLAD")!.angle))).toBeLessThan(0.001);
     expect(Math.abs(angleDelta(silentAngle, guideById.get("CHARACTER.SILENT")!.angle))).toBeLessThan(0.001);
   });
+
+  it("places sector title anchors farther out than the card cluster centers", () => {
+    const graph = buildCardGraph([
+      { id: "CARD.OFFERING", timesPicked: 5, timesSkipped: 0, timesWon: 5, timesLost: 0 },
+      { id: "CARD.PYRE", timesPicked: 4, timesSkipped: 0, timesWon: 3, timesLost: 1 },
+      { id: "CARD.ACROBATICS", timesPicked: 5, timesSkipped: 0, timesWon: 3, timesLost: 2 },
+    ]);
+    const layout = buildCardStatsLayout(graph);
+    const ironcladGroup = layout.groupLayouts.find((group) => group.id === "CHARACTER.IRONCLAD");
+    const ironcladAnchor = layout.labelAnchors.find((anchor) => anchor.id === "CHARACTER.IRONCLAD");
+
+    expect(ironcladGroup).toBeTruthy();
+    expect(ironcladAnchor).toBeTruthy();
+    expect(Math.hypot(ironcladAnchor!.position.x, ironcladAnchor!.position.y)).toBeGreaterThan(
+      Math.hypot(ironcladGroup!.center.x, ironcladGroup!.center.y)
+    );
+  });
 });

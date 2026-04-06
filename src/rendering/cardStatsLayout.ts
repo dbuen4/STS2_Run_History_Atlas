@@ -20,15 +20,21 @@ export interface CardStatsGroupLayout {
   nodeIds: string[];
 }
 
+export interface CardStatsSectorLabelAnchor {
+  id: CardStatsSectorId;
+  position: Point;
+}
+
 export interface CardStatsLayoutResult {
   positions: Point[];
   groupLayouts: CardStatsGroupLayout[];
+  labelAnchors: CardStatsSectorLabelAnchor[];
 }
 
-const CLUSTER_PADDING = 0.16;
-const SECTOR_CLEARANCE = 0.58;
-const HUB_CLEARANCE = 0.58;
-const USABLE_SECTOR_HALF_SPAN = CARD_STATS_SECTOR_STEP * 0.37;
+const CLUSTER_PADDING = 0.12;
+const SECTOR_CLEARANCE = 0.34;
+const HUB_CLEARANCE = 0.32;
+const USABLE_SECTOR_HALF_SPAN = CARD_STATS_SECTOR_STEP * 0.43;
 
 function createEmptyPositions(count: number): Point[] {
   return Array.from({ length: count }, () => ({ x: 0, y: 0 }));
@@ -115,8 +121,9 @@ function buildClusterLayout(nodes: GraphNode[]): { positions: Point[]; radius: n
 export function buildCardStatsLayout(graph: GraphDataset): CardStatsLayoutResult {
   const positions = createEmptyPositions(graph.nodes.length);
   const groupLayouts: CardStatsGroupLayout[] = [];
+  const labelAnchors: CardStatsSectorLabelAnchor[] = [];
   if (graph.nodes.length === 0) {
-    return { positions, groupLayouts };
+    return { positions, groupLayouts, labelAnchors };
   }
 
   const sectorGuides = getCardStatsSectorGuides();
@@ -164,7 +171,7 @@ export function buildCardStatsLayout(graph: GraphDataset): CardStatsLayoutResult
   const sectorCenterDistance = Math.max(
     maxSectorRadius > 0 ? maxSectorRadius / Math.sin(USABLE_SECTOR_HALF_SPAN) : 0,
     colorlessLayout.radius + maxSectorRadius + SECTOR_CLEARANCE,
-    1.65
+    1.2
   );
   const hubDistance = sectorCenterDistance + maxSectorRadius + HUB_CLEARANCE;
 
@@ -177,12 +184,18 @@ export function buildCardStatsLayout(graph: GraphDataset): CardStatsLayoutResult
     };
     const sectorLayout = sectorLayouts.get(guide.id);
     const hubIndex = hubIndexBySectorId.get(guide.id);
+    const labelAnchor = {
+      x: directionX * hubDistance,
+      y: directionY * hubDistance,
+    };
+
+    labelAnchors.push({
+      id: guide.id,
+      position: labelAnchor,
+    });
 
     if (hubIndex !== undefined) {
-      positions[hubIndex] = {
-        x: directionX * hubDistance,
-        y: directionY * hubDistance,
-      };
+      positions[hubIndex] = labelAnchor;
     }
 
     if (sectorLayout) {
@@ -220,7 +233,7 @@ export function buildCardStatsLayout(graph: GraphDataset): CardStatsLayoutResult
     });
   }
 
-  return { positions, groupLayouts };
+  return { positions, groupLayouts, labelAnchors };
 }
 
 export function getCardStatsPositions(graph: GraphDataset): Point[] {

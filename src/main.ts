@@ -361,7 +361,7 @@ function updateControlNote(view: GraphView): void {
     topNInput.disabled = false;
     minSupportInput.disabled = false;
     note.textContent =
-      "Card Stats uses progress.save, keeps Max Nodes global, segments cards into five class sectors, and centers Colorless cards.";
+      "Card Stats uses progress.save, keeps Max Nodes global, and places only cards into five class sectors with Colorless centered.";
   } else if (view === "encounterStats") {
     topNInput.disabled = false;
     minSupportInput.disabled = true;
@@ -657,7 +657,16 @@ async function main(): Promise<void> {
 
   viewSelect.addEventListener("change", () => {
     updateControlNote(viewSelect.value as GraphView);
-    renderAwaitingGeneration(state, renderer, "Graph settings changed. Click Generate Graph to refresh the canvas.");
+    if (hasSelectedAnalyticsFiles(state)) {
+      buildAndRenderCurrentView(state, renderer);
+      return;
+    }
+
+    renderAwaitingGeneration(
+      state,
+      renderer,
+      "Graph settings changed. Load data to generate the selected view."
+    );
   });
   topNInput.addEventListener("change", () => {
     renderAwaitingGeneration(state, renderer, "Graph settings changed. Click Generate Graph to refresh the canvas.");

@@ -40,6 +40,8 @@ const COLORS = {
   encounter: [0.61, 0.23, 0.2, 1] as [number, number, number, number],
 };
 
+const COLORLESS_EDGE_COLOR: [number, number, number, number] = [0.62, 0.62, 0.62, 1];
+
 interface RelicStat {
   id: string;
   support: number;
@@ -94,8 +96,6 @@ function addEdge(
 
   edgeMap.set(`${sourceId}::${targetId}`, { sourceId, targetId, weight, color });
 }
-
-const COLORLESS_EDGE_COLOR: [number, number, number, number] = [0.62, 0.62, 0.62, 1];
 
 function withLayoutRadius(node: Omit<GraphNode, "layoutRadius">): GraphNode {
   return {
@@ -546,18 +546,21 @@ function buildCardStatsGraph(loadResult: LoadResult, topN: number, minSupport: n
   }
 
   const maxWinRate = Math.max(...cardAggregates.map((stat) => stat.winRate), 0.01);
-  const nodes: GraphNode[] = cardAggregates.map((stat) =>
-    withLayoutRadius({
+  const nodes: GraphNode[] = cardAggregates.map((stat) => {
+    const label = humanizeToken(stat.id);
+    const layoutRadiusSeed = squareRootRadius(stat.winRate, maxWinRate, 0.15, 0.34);
+    return {
       id: stat.id,
-      label: humanizeToken(stat.id),
+      label,
       kind: "card",
       value: stat.winRate,
       secondaryValue: stat.support,
-      radius: squareRootRadius(stat.winRate, maxWinRate, 0.12, 0.28),
+      radius: squareRootRadius(stat.winRate, maxWinRate, 0.3, 0.68),
+      layoutRadius: computeLayoutRadius(label, "card", layoutRadiusSeed),
       color: blendColor(COLORS.loss, COLORS.win, stat.winRate),
       imageUrl: getCardImageUrl(stat.id),
-    })
-  );
+    };
+  });
 
   const ranking: RankingEntry[] = cardAggregates.map((stat) => ({
     id: stat.id,
@@ -616,10 +619,10 @@ function buildCardStatsGraph(loadResult: LoadResult, topN: number, minSupport: n
     view: "cardStats",
     title: "Card Stats",
     subtitle:
-      "Cards are filtered to non-starter pickups, sized by profile win rate, arranged into five fixed class sectors, and keep Colorless cards in a centered cluster.",
-    nodes: [...characterNodes, ...nodes],
-    edges: [...edgeMap.values()],
-    showEdges: true,
+      "Cards are filtered to non-starter pickups, sized by profile win rate, and placed directly into five fixed class sectors with Colorless centered.",
+    nodes,
+    edges: [],
+    showEdges: false,
     ranking,
     summaryCards: [
       {

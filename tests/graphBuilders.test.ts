@@ -308,11 +308,10 @@ describe("graphBuilders", () => {
 
     expect(graph.ranking[0].label).toBe("Offering");
     expect(graph.ranking[0].valueLabel).toBe("100% win rate");
-    expect(graph.showEdges).toBe(true);
-    expect(graph.nodes.some((node) => node.kind === "character")).toBe(true);
-    expect(graph.nodes.filter((node) => node.kind === "card")).toHaveLength(graph.ranking.length);
-    expect(graph.edges.length).toBeGreaterThan(0);
-    expect(graph.edges.every((edge) => edge.sourceId.startsWith("CHARACTER."))).toBe(true);
+    expect(graph.nodes).toHaveLength(graph.ranking.length);
+    expect(graph.edges).toHaveLength(0);
+    expect(graph.showEdges).toBe(false);
+    expect(graph.nodes.every((node) => node.kind === "card")).toBe(true);
 
     const cardNode = graph.nodes.find((node) => node.id === "CARD.OFFERING");
     expect(cardNode?.layoutRadius).toBeGreaterThan(cardNode?.radius ?? 0);
@@ -326,32 +325,14 @@ describe("graphBuilders", () => {
     expect(offeringNode?.imageUrl).toBeTruthy();
   });
 
-  it("adds visible class spokes for qualifying non-colorless cards", () => {
+  it("keeps card stats as a card-only graph without class spokes", () => {
     const graph = build("cardStats", cardClusterLoad, { topN: 5, minSupport: 2 });
 
-    expect(graph.showEdges).toBe(true);
+    expect(graph.showEdges).toBe(false);
     expect(getCardPool("CARD.OFFERING")).toBe("ironclad");
     expect(getCardPool("CARD.FLASH_OF_STEEL")).toBe("colorless");
-    expect(graph.edges).toEqual([
-      {
-        sourceId: "CHARACTER.IRONCLAD",
-        targetId: "CARD.OFFERING",
-        weight: 2,
-        color: getCharacterColor("CHARACTER.IRONCLAD"),
-      },
-      {
-        sourceId: "CHARACTER.IRONCLAD",
-        targetId: "CARD.PYRE",
-        weight: 2,
-        color: getCharacterColor("CHARACTER.IRONCLAD"),
-      },
-      {
-        sourceId: "CHARACTER.NECROBINDER",
-        targetId: "CARD.FEAR",
-        weight: 2,
-        color: getCharacterColor("CHARACTER.NECROBINDER"),
-      },
-    ]);
+    expect(graph.edges).toEqual([]);
+    expect(graph.nodes.every((node) => node.kind === "card")).toBe(true);
   });
 
   it("builds encounter stats graphs from normal and elite encounters only", () => {

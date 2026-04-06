@@ -1,5 +1,6 @@
 import { Camera, createCamera, setupCameraControls, stepCamera, worldToCanvas } from "../camera";
 import { rgbaToCssColor } from "../characterPalette";
+import { type Point } from "./cardStatsLayout";
 import { getCardStatsSectorGuides } from "../cardStatsSectors";
 import { clamp } from "../utils";
 import { GraphDataset, GraphNode } from "../types";
@@ -32,7 +33,7 @@ interface ImageBinding {
 }
 
 interface CardStatsGuideBinding {
-  angle: number;
+  labelWorldPosition: Point;
   startAngle: number;
   endAngle: number;
   label: HTMLDivElement;
@@ -450,7 +451,11 @@ export class WebGpuGraphRenderer {
     }
   }
 
-  private createCardStatsGuides(graph: GraphDataset, guideWorldRadius: number): void {
+  private createCardStatsGuides(
+    graph: GraphDataset,
+    guideWorldRadius: number,
+    labelAnchorBySectorId: Map<string, Point>
+  ): void {
     if (!this.guideLayer) {
       return;
     }
@@ -473,7 +478,10 @@ export class WebGpuGraphRenderer {
       label.style.background = rgbaToCssColor([1, 0.99, 0.97, 0.74]);
 
       return {
-        angle: guide.angle,
+        labelWorldPosition: labelAnchorBySectorId.get(guide.id) ?? {
+          x: Math.cos(guide.angle) * guideWorldRadius,
+          y: Math.sin(guide.angle) * guideWorldRadius,
+        },
         startAngle: guide.startAngle,
         endAngle: guide.endAngle,
         label,
@@ -496,7 +504,6 @@ export class WebGpuGraphRenderer {
       return;
     }
 
-    const labelRadius = this.guideWorldRadius * 0.82;
     const center = worldToCanvas(0, 0, this.camera, this.canvas);
 
     for (const binding of this.guideBindings) {
@@ -522,8 +529,8 @@ export class WebGpuGraphRenderer {
       binding.wedge.style.clipPath = `polygon(${polygon.join(", ")})`;
 
       const labelCenter = worldToCanvas(
-        Math.cos(binding.angle) * labelRadius,
-        Math.sin(binding.angle) * labelRadius,
+        binding.labelWorldPosition.x,
+        binding.labelWorldPosition.y,
         this.camera,
         this.canvas
       );
@@ -819,16 +826,20 @@ export class WebGpuGraphRenderer {
 
     let positions = getInitialPositions(graph);
     let guideWorldRadius = 0;
+    let labelAnchorBySectorId = new Map<string, Point>();
     if (graph.view === "cardStats") {
       const cardStatsLayout = buildCardStatsLayout(graph);
       positions = cardStatsLayout.positions;
+      labelAnchorBySectorId = new Map(
+        cardStatsLayout.labelAnchors.map((anchor) => [anchor.id, anchor.position] as const)
+      );
       guideWorldRadius =
         Math.max(
           ...cardStatsLayout.groupLayouts.map(
             (layout) => Math.hypot(layout.center.x, layout.center.y) + layout.radius
           ),
           1.8
-        ) + 0.9;
+        ) + 0.55;
     } else {
       this.clearCardStatsGuides();
     }
@@ -847,7 +858,7 @@ export class WebGpuGraphRenderer {
     this.nodeSnapshot = nodeData.slice();
     this.applyCameraFitFromNodeData(this.nodeSnapshot, graph.nodes.length);
     if (graph.view === "cardStats") {
-      this.createCardStatsGuides(graph, guideWorldRadius);
+      this.createCardStatsGuides(graph, guideWorldRadius, labelAnchorBySectorId);
     }
     this.createLabels(graph.nodes);
     this.showEdges = graph.showEdges ?? false;
