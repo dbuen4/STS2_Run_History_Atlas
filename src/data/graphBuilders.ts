@@ -107,6 +107,8 @@ const POOL_CHARACTER_ID: Record<string, string | null> = {
 
 const COLORLESS_EDGE_COLOR: [number, number, number, number] = [0.62, 0.62, 0.62, 1];
 
+
+
 function withLayoutRadius(node: Omit<GraphNode, "layoutRadius">): GraphNode {
   return {
     ...node,
@@ -121,8 +123,8 @@ function makeCountNode(
   count: number,
   maxCount: number,
   color: [number, number, number, number],
-  minRadius: number = 0.05,
-  maxRadius: number = 0.16
+  minRadius: number = 0.12,
+  maxRadius: number = 0.28
 ): GraphNode {
   const radius = squareRootRadius(count, maxCount || 1, minRadius, maxRadius);
   return withLayoutRadius({
@@ -244,21 +246,6 @@ function buildBossGraph(runs: RunSummary[], topN: number, hasProgress: boolean):
   const selectedBosses = new Set(rankedBosses.map((entry) => entry.encounter));
   const maxBossCount = Math.max(...rankedBosses.map((entry) => entry.count), 1);
 
-  const characterDeathCounts = new Map<string, number>();
-  const characterBossEdgeCounts = new Map<string, number>();
-  for (const run of deathRuns) {
-    const encounter = run.killedByEncounter as string;
-    if (!selectedBosses.has(encounter)) {
-      continue;
-    }
-
-    characterDeathCounts.set(run.character, (characterDeathCounts.get(run.character) ?? 0) + 1);
-    characterBossEdgeCounts.set(
-      `${run.character}::${encounter}`,
-      (characterBossEdgeCounts.get(`${run.character}::${encounter}`) ?? 0) + 1
-    );
-  }
-
   const bossNodes = rankedBosses.map((entry) =>
     makeCountNode(
       entry.encounter,
@@ -267,17 +254,12 @@ function buildBossGraph(runs: RunSummary[], topN: number, hasProgress: boolean):
       entry.count,
       maxBossCount,
       COLORS.boss,
-      0.06,
-      0.16
+      0.12,
+      0.28
     )
   );
   bossNodes.forEach((node) => {
     node.imageUrl = getBossImageUrl(node.id);
-  });
-
-  const edges = [...characterBossEdgeCounts.entries()].map(([key, weight]) => {
-    const [sourceId, targetId] = key.split("::");
-    return { sourceId, targetId, weight };
   });
 
   const ranking: RankingEntry[] = rankedBosses.map((entry) => ({
@@ -308,7 +290,7 @@ function buildBossGraph(runs: RunSummary[], topN: number, hasProgress: boolean):
     subtitle:
       "Boss nodes grow with total deaths and focus on the true boss encounters that most often ended a run.",
     nodes: bossNodes,
-    edges,
+    edges: [],
     ranking,
     summaryCards,
     warnings,
@@ -391,7 +373,7 @@ function buildRelicGraph(
       kind: "relic" as const,
       value: stat.winRate,
       secondaryValue: stat.support,
-      radius: squareRootRadius(stat.winRate, maxRelicWinRate, 0.06, 0.15),
+      radius: squareRootRadius(stat.winRate, maxRelicWinRate, 0.12, 0.28),
       color: COLORS.relic,
       imageUrl: getRelicImageUrl(stat.id),
     })
@@ -422,7 +404,7 @@ function buildRelicGraph(
     subtitle:
       "Starter relics are removed, and relic nodes grow with win rate across qualifying completed runs.",
     nodes: relicNodes,
-    edges: [...edgeMap.values()],
+    edges: [],
     ranking,
     summaryCards: [
       { label: "Completed Runs", value: String(completedRuns.length) },
@@ -474,7 +456,7 @@ function buildProfileOverviewGraph(loadResult: LoadResult): GraphDataset {
       kind: "character",
       value: stat.playtime,
       secondaryValue: stat.maxAscension,
-      radius: squareRootRadius(stat.playtime, maxPlaytime, 0.07, 0.16),
+      radius: squareRootRadius(stat.playtime, maxPlaytime, 0.12, 0.28),
       color: getCharacterColor(
         stat.id,
         blendColor(COLORS.characterLow, COLORS.characterHigh, stat.maxAscension / maxAscension)
@@ -619,7 +601,7 @@ function buildCardStatsGraph(loadResult: LoadResult, topN: number, minSupport: n
       kind: "card",
       value: stat.winRate,
       secondaryValue: stat.support,
-      radius: squareRootRadius(stat.winRate, maxWinRate, 0.06, 0.15),
+      radius: squareRootRadius(stat.winRate, maxWinRate, 0.12, 0.28),
       color: blendColor(COLORS.loss, COLORS.win, stat.winRate),
       imageUrl: getCardImageUrl(stat.id),
     })
@@ -657,7 +639,7 @@ function buildCardStatsGraph(loadResult: LoadResult, topN: number, minSupport: n
         label: humanizeToken(characterId),
         kind: "character",
         value: group.length,
-        radius: 0.12,
+        radius: 0.24,
         color: getCharacterColor(characterId),
         imageUrl: getCharacterImageUrl(characterId),
       })
@@ -674,14 +656,6 @@ function buildCardStatsGraph(loadResult: LoadResult, topN: number, minSupport: n
     if (characterId != null) {
       for (const stat of group) {
         addEdge(edgeMap, characterId, stat.id, 2, edgeColor);
-      }
-    }
-
-    // Web: connect each card to its 3 nearest neighbors by win rate within the pool.
-    const sorted = [...group].sort((a, b) => b.winRate - a.winRate);
-    for (let i = 0; i < sorted.length; i++) {
-      for (let j = i + 1; j <= Math.min(sorted.length - 1, i + 3); j++) {
-        addEdge(edgeMap, sorted[i].id, sorted[j].id, 0.5, edgeColor);
       }
     }
   }
@@ -782,12 +756,6 @@ function buildEncounterStatsGraph(loadResult: LoadResult, topN: number): GraphDa
   }
 
   const maxEncounterLosses = Math.max(...encounterAggregates.map((stat) => stat.losses), 1);
-  const edgeMap = new Map<string, GraphEdge>();
-  for (const encounter of encounterAggregates) {
-    for (const [character, losses] of encounter.characterLosses) {
-      addEdge(edgeMap, character, encounter.id, losses);
-    }
-  }
 
   const encounterNodes = encounterAggregates.map((stat) =>
     withLayoutRadius({
@@ -796,7 +764,7 @@ function buildEncounterStatsGraph(loadResult: LoadResult, topN: number): GraphDa
       kind: "encounter" as const,
       value: stat.losses,
       secondaryValue: stat.lossRate,
-      radius: squareRootRadius(stat.losses, maxEncounterLosses, 0.06, 0.16),
+      radius: squareRootRadius(stat.losses, maxEncounterLosses, 0.12, 0.28),
       color: blendColor(COLORS.encounter, COLORS.loss, stat.lossRate),
       imageUrl: getEncounterImageUrl(stat.id),
     })
@@ -817,7 +785,7 @@ function buildEncounterStatsGraph(loadResult: LoadResult, topN: number): GraphDa
     subtitle:
       "Encounter nodes come from progress.save fight aggregates and focus on the normal and elite fights with the most tracked losses.",
     nodes: encounterNodes,
-    edges: [...edgeMap.values()],
+    edges: [],
     ranking,
     summaryCards: [
       {

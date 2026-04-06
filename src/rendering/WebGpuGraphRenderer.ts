@@ -39,16 +39,18 @@ class ForceDirectedLayout {
   private readonly bindGroup: GPUBindGroup;
   private readonly uniformBuffer: GPUBuffer;
   private readonly nodeCount: number;
+  private readonly characterNodeCount: number;
   private readonly baseLength: number;
   private readonly initialMagnitude: number;
   private readonly coolingFactor: number = 0.985;
   private magnitude: number;
 
-  constructor(device: GPUDevice, nodeBuffer: GPUBuffer, nodes: RenderNodeInput[], edges: EdgeInput[]) {
+  constructor(device: GPUDevice, nodeBuffer: GPUBuffer, nodes: RenderNodeInput[], edges: EdgeInput[], characterNodeCount: number = 0, gentleSettle: boolean = false) {
     this.nodeCount = nodes.length;
+    this.characterNodeCount = characterNodeCount;
     const maxLabelExpansion = Math.max(...nodes.map((node) => node.layoutRadius - node.radius), 0);
     this.baseLength = 0.1 + Math.min(0.12, maxLabelExpansion * 0.35);
-    this.initialMagnitude = maxLabelExpansion > 0 ? 0.072 : 0.06;
+    this.initialMagnitude = gentleSettle ? 0.022 : (maxLabelExpansion > 0 ? 0.072 : 0.06);
     this.magnitude = this.initialMagnitude;
 
     const nodeIndexById = new Map(nodes.map((node, index) => [node.id, index]));
@@ -103,6 +105,7 @@ class ForceDirectedLayout {
   private updateUniforms(device: GPUDevice): void {
     device.queue.writeBuffer(this.uniformBuffer, 0, new Uint32Array([this.nodeCount]));
     device.queue.writeBuffer(this.uniformBuffer, 4, new Float32Array([this.magnitude, this.baseLength]));
+    device.queue.writeBuffer(this.uniformBuffer, 12, new Uint32Array([this.characterNodeCount]));
   }
 
   reset(device: GPUDevice): void {
@@ -146,20 +149,25 @@ function createBlendState(): GPUBlendState {
 
 function getInitialPositions(nodes: RenderNodeInput[]): Array<{ x: number; y: number }> {
   const nodeCount = nodes.length;
-  if (nodeCount === 0) {
-    return [];
-  }
+  if (nodeCount === 0) return [];
+  if (nodeCount === 1) return [{ x: 0, y: 0 }];
 
-  const baseRing = nodeCount <= 8 ? 0.52 : 0.68;
-  const maxLayoutRadius = Math.max(...nodes.map((node) => node.layoutRadius), 0);
-  const radius = clamp(baseRing + maxLayoutRadius * Math.sqrt(nodeCount), baseRing, 1.05);
-  return Array.from({ length: nodeCount }, (_, index) => {
-    const angle = (Math.PI * 2 * index) / nodeCount - Math.PI / 2;
-    return {
-      x: Math.cos(angle) * radius,
-      y: Math.sin(angle) * radius,
+  // Simple grid: nodes placed left-to-right, top-to-bottom, centered at origin.
+  const cols = Math.ceil(Math.sqrt(nodeCount));
+  const rows = Math.ceil(nodeCount / cols);
+  const maxLayoutRadius = Math.max(...nodes.map((n) => n.layoutRadius));
+  const spacing = maxLayoutRadius * 2.5;
+
+  const positions = new Array<{ x: number; y: number }>(nodeCount);
+  for (let i = 0; i < nodeCount; i++) {
+    const col = i % cols;
+    const row = Math.floor(i / cols);
+    positions[i] = {
+      x: (col - (cols - 1) / 2) * spacing,
+      y: (row - (rows - 1) / 2) * spacing,
     };
-  });
+  }
+  return positions;
 }
 
 export class WebGpuGraphRenderer {
@@ -626,7 +634,7 @@ export class WebGpuGraphRenderer {
     this.nodeSnapshot = nodeData.slice();
     this.applyCameraFitFromNodeData(this.nodeSnapshot, graph.nodes.length);
     this.createLabels(graph.nodes);
-    this.showEdges = graph.showEdges ?? false;
+    this.showEdges = false;
 
     const nodeIndexById = new Map(graph.nodes.map((node, index) => [node.id, index]));
     // Edge buffer layout: [sourceIndex(u32), targetIndex(u32), r(f32), g(f32), b(f32), a(f32)]
@@ -692,9 +700,8 @@ export class WebGpuGraphRenderer {
     this.nodeCount = graph.nodes.length;
     this.edgeCount = graph.edges.length;
     this.frameCount = 0;
-    this.layout = new ForceDirectedLayout(this.device, this.nodeBuffer, graph.nodes, graph.edges);
-    this.layout.reset(this.device);
-    this.layoutActive = true;
+    this.layout = null;
+    this.layoutActive = false;
     this.autoFitEnabled = true;
     this.autoFitWarmupFrames = 2;
     this.autoFitReadbacksRemaining = 12;

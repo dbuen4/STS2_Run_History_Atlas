@@ -9,7 +9,7 @@ struct Uniforms {
     nodesLength: u32,
     magnitude: f32,
     baseLength: f32,
-    padding: f32,
+    characterNodeCount: u32,
 };
 
 @group(0) @binding(0) var<storage, read_write> nodes: array<Node>;
@@ -43,8 +43,12 @@ fn main(@builtin(global_invocation_id) globalId: vec3<u32>) {
             force += direction * attraction;
         } else {
             let overlap = max(desired - dist, 0.0);
-            let repulsion = ((desired * desired) / (dist * dist)) * 0.045 + overlap * 0.55;
-            force -= direction * repulsion;
+            // overlap * 2.5: strong enough to separate nodes even when magnitude is near 0.
+            let baseRepulsion = ((desired * desired) / (dist * dist)) * 0.045 + overlap * 2.5;
+            // Character hubs repel each other strongly to keep clusters separated.
+            let characterPair = (nodeIndex < uniforms.characterNodeCount) && (i < uniforms.characterNodeCount);
+            let repulsionMult = select(1.0, 10.0, characterPair);
+            force -= direction * baseRepulsion * repulsionMult;
         }
     }
 
@@ -52,8 +56,9 @@ fn main(@builtin(global_invocation_id) globalId: vec3<u32>) {
 
     let forceLength = length(force);
     if (forceLength > 0.0001) {
-        let step = min(forceLength, uniforms.magnitude);
-        let nextPos = current.pos + normalize(force) * step;
-        nodes[nodeIndex].pos = clamp(nextPos, vec2f(-1.45, -1.45), vec2f(1.45, 1.45));
+        // Use max(magnitude, 0.012) so overlap resolution always has enough step budget.
+        let stepBudget = max(uniforms.magnitude, 0.012);
+        let step = min(forceLength, stepBudget);
+        nodes[nodeIndex].pos = current.pos + normalize(force) * step;
     }
 }
