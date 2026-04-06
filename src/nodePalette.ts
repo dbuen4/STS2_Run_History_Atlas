@@ -20,6 +20,27 @@ export interface PaginatedLegend {
 
 export const LEGEND_VISIBLE_COUNT = 5;
 
+const RUN_SCATTER_LEGEND: NodeLegendItem[] = [
+  {
+    id: "run-scatter-win",
+    label: "Wins",
+    color: [0.2, 0.52, 0.42, 1],
+    kind: "stat",
+  },
+  {
+    id: "run-scatter-loss",
+    label: "Losses",
+    color: [0.76, 0.27, 0.22, 1],
+    kind: "stat",
+  },
+  {
+    id: "run-scatter-abandoned",
+    label: "Abandoned",
+    color: [0.45, 0.44, 0.44, 1],
+    kind: "stat",
+  },
+];
+
 function hashString(input: string): number {
   let hash = 2166136261;
   for (let index = 0; index < input.length; index += 1) {
@@ -77,6 +98,10 @@ function getDynamicNodeColor(node: GraphNode, index: number): RgbaColor {
 }
 
 export function assignGraphNodeColors(graph: GraphDataset): GraphDataset {
+  if (graph.view === "runScatter") {
+    return graph;
+  }
+
   const nodes = graph.nodes.map((node, index) => ({
     ...node,
     color: getDynamicNodeColor(node, index),
@@ -96,6 +121,10 @@ export function buildNodeLegend(graph: GraphDataset): NodeLegendItem[] {
       color: item.color,
       kind: "character" as const,
     }));
+  }
+
+  if (graph.view === "runScatter") {
+    return RUN_SCATTER_LEGEND;
   }
 
   const nodeById = new Map(

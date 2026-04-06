@@ -248,6 +248,49 @@
         box-shadow: 0 6px 14px rgba(88, 58, 32, 0.08);
       }
 
+      .scatter-guide-line {
+        position: absolute;
+        left: 0;
+        top: 0;
+        height: 2px;
+        border-radius: 999px;
+        background: rgba(94, 68, 41, 0.24);
+        box-shadow: 0 1px 0 rgba(255, 255, 255, 0.58);
+      }
+
+      .scatter-guide-label,
+      .scatter-guide-value {
+        position: absolute;
+        left: 0;
+        top: 0;
+        color: #5c4430;
+        background: rgba(255, 251, 245, 0.86);
+        border: 1px solid rgba(112, 83, 56, 0.14);
+        border-radius: 999px;
+        box-shadow: 0 6px 14px rgba(88, 58, 32, 0.08);
+        pointer-events: none;
+      }
+
+      .scatter-guide-label {
+        transform: translate(-50%, 0);
+        padding: 5px 9px;
+        font-size: 0.72rem;
+        font-weight: 700;
+        letter-spacing: 0.08em;
+        text-transform: uppercase;
+      }
+
+      .scatter-guide-label-vertical {
+        transform: translate(-50%, -50%) rotate(-90deg);
+      }
+
+      .scatter-guide-value {
+        transform: translate(-50%, -50%);
+        padding: 4px 8px;
+        font-size: 0.76rem;
+        font-weight: 700;
+      }
+
       .node-label-layer {
         position: absolute;
         inset: 0;
@@ -569,6 +612,7 @@
               <option value="relicWinRate">Relic Win Rate</option>
               <option value="cardStats">Card Stats</option>
               <option value="encounterStats">Encounter Stats</option>
+              <option value="runScatter">Run Scatter Plot</option>
             </select>
           </div>
           <div class="field">
@@ -578,6 +622,16 @@
           <div class="field">
             <label for="min-support-input">Minimum node support</label>
             <input id="min-support-input" type="number" min="1" max="30" step="1" value="5" />
+          </div>
+          <div id="scatter-controls" hidden>
+            <div class="field">
+              <label for="scatter-x-select">Scatter x-axis</label>
+              <select id="scatter-x-select"></select>
+            </div>
+            <div class="field">
+              <label for="scatter-y-select">Scatter y-axis</label>
+              <select id="scatter-y-select"></select>
+            </div>
           </div>
           <button id="generate-graph-btn" class="primary-button">Generate Graph</button>
           <p class="support-note" id="control-note">

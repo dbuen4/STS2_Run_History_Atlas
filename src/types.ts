@@ -3,7 +3,8 @@ export type GraphView =
   | "relicWinRate"
   | "profileOverview"
   | "cardStats"
-  | "encounterStats";
+  | "encounterStats"
+  | "runScatter";
 
 export type GraphNodeKind =
   | "character"
@@ -22,6 +23,11 @@ export interface RunSummary {
   wasAbandoned: boolean;
   killedByEncounter: string | null;
   relicIdsExcludingStarter: string[];
+  floorsClimbed: number;
+  elitesEncountered: number;
+  overallEncounters: number;
+  restSitesVisited: number;
+  maxHealth: number;
 }
 
 export interface LoadResult {
@@ -51,6 +57,39 @@ export interface GraphEdge {
   color?: [number, number, number, number];
 }
 
+export type ScatterMetricId =
+  | "floorsClimbed"
+  | "elitesEncountered"
+  | "overallEncounters"
+  | "restSitesVisited"
+  | "maxHealth";
+
+export interface FixedGraphPosition {
+  x: number;
+  y: number;
+}
+
+export interface ScatterAxisMetadata {
+  metric: ScatterMetricId;
+  label: string;
+  minValue: number;
+  maxValue: number;
+  minLabel: string;
+  maxLabel: string;
+}
+
+export interface ScatterPlotMetadata {
+  xAxis: ScatterAxisMetadata;
+  yAxis: ScatterAxisMetadata;
+  correlation: number | null;
+  worldBounds: {
+    minX: number;
+    maxX: number;
+    minY: number;
+    maxY: number;
+  };
+}
+
 export interface RankingEntry {
   id: string;
   label: string;
@@ -71,6 +110,8 @@ export interface GraphDataset {
   edges: GraphEdge[];
   layoutEdges?: GraphEdge[];
   showEdges?: boolean;
+  fixedPositions?: FixedGraphPosition[];
+  scatterPlot?: ScatterPlotMetadata;
   ranking: RankingEntry[];
   summaryCards: SummaryCard[];
   warnings: string[];
@@ -79,6 +120,8 @@ export interface GraphDataset {
 export interface GraphBuildOptions {
   topN: number;
   minSupport: number;
+  scatterXMetric?: ScatterMetricId;
+  scatterYMetric?: ScatterMetricId;
 }
 
 export interface ParseFileInput {

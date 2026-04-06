@@ -32,6 +32,62 @@ describe("runParser", () => {
     expect(result.relicIdsExcludingStarter).toEqual(["RELIC.ANCHOR", "RELIC.CLOAK_CLASP"]);
   });
 
+  it("extracts scatter metrics from map point history", () => {
+    const result = parseRunJsonText(
+      JSON.stringify({
+        start_time: 2001,
+        win: false,
+        was_abandoned: false,
+        killed_by_encounter: "ENCOUNTER.TEST_BOSS",
+        players: [
+          {
+            character: "CHARACTER.IRONCLAD",
+            relics: [{ id: "RELIC.BURNING_BLOOD" }, { id: "RELIC.AKABEKO" }],
+          },
+        ],
+        map_point_history: [
+          [
+            {
+              map_point_type: "monster",
+              player_stats: [{ max_hp: 70 }, { max_hp: 74 }],
+              rooms: [{ model_id: "ENCOUNTER.NIBBITS_WEAK", room_type: "monster" }],
+            },
+            {
+              map_point_type: "rest_site",
+              player_stats: [{ max_hp: 75 }],
+              rooms: [{ room_type: "rest_site" }],
+            },
+          ],
+          [
+            {
+              map_point_type: "event",
+              player_stats: [{ max_hp: 80 }],
+              rooms: [
+                { room_type: "event" },
+                {
+                  model_id: "ENCOUNTER.MYSTERIOUS_KNIGHT_EVENT_ENCOUNTER",
+                  room_type: "monster",
+                },
+              ],
+            },
+            {
+              map_point_type: "elite",
+              player_stats: [{ max_hp: 82 }, { max_hp: 90 }],
+              rooms: [{ model_id: "ENCOUNTER.ENTOMANCER_ELITE", room_type: "elite" }],
+            },
+          ],
+        ],
+      }),
+      "scatter-test.run"
+    );
+
+    expect(result.floorsClimbed).toBe(4);
+    expect(result.overallEncounters).toBe(3);
+    expect(result.elitesEncountered).toBe(1);
+    expect(result.restSitesVisited).toBe(1);
+    expect(result.maxHealth).toBe(90);
+  });
+
   it("collects warnings and skip counts for malformed or incomplete files", () => {
     const result = parseManyRunTexts([
       { fileName: "solo-loss.run", text: readFixture("solo-loss.run") },

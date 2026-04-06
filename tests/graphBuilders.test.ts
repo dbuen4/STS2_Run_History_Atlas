@@ -93,6 +93,71 @@ describe("graphBuilders", () => {
     skippedFiles: 0,
     warnings: [],
   };
+  const scatterRuns: RunSummary[] = [
+    {
+      runId: "scatter-1",
+      sourceName: "scatter-1.run",
+      character: "CHARACTER.IRONCLAD",
+      win: true,
+      wasAbandoned: false,
+      killedByEncounter: "NONE.NONE",
+      relicIdsExcludingStarter: [],
+      floorsClimbed: 10,
+      elitesEncountered: 1,
+      overallEncounters: 5,
+      restSitesVisited: 1,
+      maxHealth: 70,
+    },
+    {
+      runId: "scatter-2",
+      sourceName: "scatter-2.run",
+      character: "CHARACTER.SILENT",
+      win: false,
+      wasAbandoned: false,
+      killedByEncounter: "ENCOUNTER.NIBBITS_WEAK",
+      relicIdsExcludingStarter: [],
+      floorsClimbed: 18,
+      elitesEncountered: 2,
+      overallEncounters: 8,
+      restSitesVisited: 2,
+      maxHealth: 78,
+    },
+    {
+      runId: "scatter-3",
+      sourceName: "scatter-3.run",
+      character: "CHARACTER.DEFECT",
+      win: false,
+      wasAbandoned: true,
+      killedByEncounter: "NONE.NONE",
+      relicIdsExcludingStarter: [],
+      floorsClimbed: 6,
+      elitesEncountered: 0,
+      overallEncounters: 3,
+      restSitesVisited: 1,
+      maxHealth: 66,
+    },
+    {
+      runId: "scatter-4",
+      sourceName: "scatter-4.run",
+      character: "CHARACTER.NECROBINDER",
+      win: true,
+      wasAbandoned: false,
+      killedByEncounter: "NONE.NONE",
+      relicIdsExcludingStarter: [],
+      floorsClimbed: 24,
+      elitesEncountered: 4,
+      overallEncounters: 11,
+      restSitesVisited: 3,
+      maxHealth: 92,
+    },
+  ];
+  const scatterGraphLoad: LoadResult = {
+    runs: scatterRuns,
+    progress: null,
+    parsedFiles: scatterRuns.length,
+    skippedFiles: 0,
+    warnings: [],
+  };
 
   it("uses fixed character colors in profile overview", () => {
     const profileGraph = build("profileOverview", loadResult);
@@ -133,6 +198,18 @@ describe("graphBuilders", () => {
 
     expect(legend.map((entry) => entry.label)).toEqual(graph.ranking.map((entry) => entry.label));
     expect(legend.every((entry) => entry.kind === "card")).toBe(true);
+  });
+
+  it("builds a fixed outcome legend for the run scatter plot", () => {
+    const graph = build("runScatter", scatterGraphLoad, {
+      topN: 5,
+      minSupport: 2,
+      scatterXMetric: "floorsClimbed",
+      scatterYMetric: "elitesEncountered",
+    });
+    const legend = buildNodeLegend(graph);
+
+    expect(legend.map((entry) => entry.label)).toEqual(["Wins", "Losses", "Abandoned"]);
   });
 
   it("paginates legend entries in a sliding five-item window", () => {
@@ -213,6 +290,11 @@ describe("graphBuilders", () => {
           wasAbandoned: false,
           killedByEncounter: "ENCOUNTER.NIBBITS_WEAK",
           relicIdsExcludingStarter: [],
+          floorsClimbed: 0,
+          elitesEncountered: 0,
+          overallEncounters: 0,
+          restSitesVisited: 0,
+          maxHealth: 0,
         },
         {
           runId: "boss-loss-1",
@@ -222,6 +304,11 @@ describe("graphBuilders", () => {
           wasAbandoned: false,
           killedByEncounter: "ENCOUNTER.KNOWLEDGE_DEMON_BOSS",
           relicIdsExcludingStarter: [],
+          floorsClimbed: 0,
+          elitesEncountered: 0,
+          overallEncounters: 0,
+          restSitesVisited: 0,
+          maxHealth: 0,
         },
       ],
       progress: null,
@@ -247,6 +334,11 @@ describe("graphBuilders", () => {
           wasAbandoned: false,
           killedByEncounter: "ENCOUNTER.KAISER_CRAB_BOSS",
           relicIdsExcludingStarter: [],
+          floorsClimbed: 0,
+          elitesEncountered: 0,
+          overallEncounters: 0,
+          restSitesVisited: 0,
+          maxHealth: 0,
         },
         {
           runId: "kaiser-loss-2",
@@ -256,6 +348,11 @@ describe("graphBuilders", () => {
           wasAbandoned: false,
           killedByEncounter: "ENCOUNTER.KAISER_CRAB_BOSS",
           relicIdsExcludingStarter: [],
+          floorsClimbed: 0,
+          elitesEncountered: 0,
+          overallEncounters: 0,
+          restSitesVisited: 0,
+          maxHealth: 0,
         },
       ],
       progress: null,
@@ -351,6 +448,29 @@ describe("graphBuilders", () => {
 
     const encounterNode = graph.nodes.find((node) => node.kind === "encounter");
     expect(encounterNode?.layoutRadius).toBeGreaterThan(encounterNode?.radius ?? 0);
+  });
+
+  it("builds a flexible run scatter graph from per-run metrics", () => {
+    const graph = build("runScatter", scatterGraphLoad, {
+      topN: 5,
+      minSupport: 2,
+      scatterXMetric: "floorsClimbed",
+      scatterYMetric: "elitesEncountered",
+    });
+
+    expect(graph.nodes).toHaveLength(scatterRuns.length);
+    expect(graph.edges).toHaveLength(0);
+    expect(graph.fixedPositions).toHaveLength(scatterRuns.length);
+    expect(graph.scatterPlot?.xAxis.label).toBe("Floors Climbed");
+    expect(graph.scatterPlot?.yAxis.label).toBe("Elites Encountered");
+    expect(graph.summaryCards[0].value).toBe("4");
+    expect(graph.summaryCards[3].value).toContain("r =");
+    expect(graph.ranking[0].label).toContain("Necrobinder");
+    expect(graph.ranking[0].valueLabel).toBe("Elites Encountered: 4");
+    expect(graph.warnings).toHaveLength(0);
+    expect(graph.nodes[0]?.color).toEqual([0.2, 0.52, 0.42, 1]);
+    expect(graph.nodes[1]?.color).toEqual([0.76, 0.27, 0.22, 1]);
+    expect(graph.nodes[2]?.color).toEqual([0.45, 0.44, 0.44, 1]);
   });
 
   it("adds encounter images for known normal and elite encounters", () => {

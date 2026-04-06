@@ -1,7 +1,21 @@
 import { buildGraphDataset } from "./data/graphBuilders";
+import {
+  DEFAULT_SCATTER_X_METRIC,
+  DEFAULT_SCATTER_Y_METRIC,
+  RUN_SCATTER_METRICS,
+  coerceScatterMetricId,
+} from "./data/runScatterMetrics";
 import { rgbaToCssColor } from "./characterPalette";
 import { LEGEND_VISIBLE_COUNT, buildNodeLegend, paginateLegendEntries } from "./nodePalette";
-import { GraphDataset, GraphView, LoadResult, ParseWorkerMessage, RankingEntry, SummaryCard } from "./types";
+import {
+  GraphDataset,
+  GraphView,
+  LoadResult,
+  ParseWorkerMessage,
+  RankingEntry,
+  ScatterMetricId,
+  SummaryCard,
+} from "./types";
 import { WebGpuGraphRenderer } from "./rendering/WebGpuGraphRenderer";
 
 const DEFAULT_TOP_N = 12;
@@ -206,6 +220,10 @@ function getLegendNote(graph: GraphDataset): string {
     return "Profile Overview keeps the five main class colors fixed in the legend.";
   }
 
+  if (graph.view === "runScatter") {
+    return "Run Scatter colors each run by outcome: win, loss, or abandoned.";
+  }
+
   return `Legend shows the current view's top ranked nodes, ${LEGEND_VISIBLE_COUNT} at a time.`;
 }
 
@@ -342,10 +360,13 @@ function updateControlNote(view: GraphView): void {
   const note = document.getElementById("control-note");
   const topNInput = document.getElementById("top-n-input") as HTMLInputElement | null;
   const minSupportInput = document.getElementById("min-support-input") as HTMLInputElement | null;
+  const scatterControls = document.getElementById("scatter-controls");
 
-  if (!note || !topNInput || !minSupportInput) {
+  if (!note || !topNInput || !minSupportInput || !scatterControls) {
     return;
   }
+
+  scatterControls.hidden = view !== "runScatter";
 
   if (view === "profileOverview") {
     topNInput.disabled = true;
@@ -367,12 +388,34 @@ function updateControlNote(view: GraphView): void {
     minSupportInput.disabled = true;
     note.textContent =
       "Encounter Stats uses progress.save fight aggregates and applies Max Nodes across normal and elite encounters only; bosses and event fights are excluded.";
+  } else if (view === "runScatter") {
+    topNInput.disabled = true;
+    minSupportInput.disabled = true;
+    note.textContent =
+      "Run Scatter plots every parsed `.run` file, ignores Max Nodes and Minimum Node Support, and redraws as you switch the x and y variables.";
   } else {
     topNInput.disabled = false;
     minSupportInput.disabled = false;
     note.textContent =
       "Relic Win Rate excludes starter relics and only includes relics that meet the Minimum Node Support threshold.";
   }
+}
+
+function populateScatterMetricSelect(select: HTMLSelectElement, selectedMetric: ScatterMetricId): void {
+  select.replaceChildren(
+    ...RUN_SCATTER_METRICS.map((metric) => {
+      const option = document.createElement("option");
+      option.value = metric.id;
+      option.textContent = metric.label;
+      return option;
+    })
+  );
+  select.value = selectedMetric;
+}
+
+function getSelectedScatterMetricValue(id: string, fallback: ScatterMetricId): ScatterMetricId {
+  const select = document.getElementById(id) as HTMLSelectElement | null;
+  return coerceScatterMetricId(select?.value, fallback);
 }
 
 function buildAndRenderCurrentView(state: AppState, renderer: WebGpuGraphRenderer): void {
@@ -384,6 +427,8 @@ function buildAndRenderCurrentView(state: AppState, renderer: WebGpuGraphRendere
   const graph = buildGraphDataset(view, loadResult, {
     topN: getNumericInputValue("top-n-input", DEFAULT_TOP_N),
     minSupport: getNumericInputValue("min-support-input", DEFAULT_MIN_SUPPORT),
+    scatterXMetric: getSelectedScatterMetricValue("scatter-x-select", DEFAULT_SCATTER_X_METRIC),
+    scatterYMetric: getSelectedScatterMetricValue("scatter-y-select", DEFAULT_SCATTER_Y_METRIC),
   });
   console.info("[graph] build", {
     view,
@@ -479,6 +524,8 @@ async function main(): Promise<void> {
   const legendDownButton = document.getElementById("legend-down-btn") as HTMLButtonElement | null;
   const historyFilesInput = document.getElementById("history-files-input") as HTMLInputElement | null;
   const progressFileInput = document.getElementById("progress-file-input") as HTMLInputElement | null;
+  const scatterXSelect = document.getElementById("scatter-x-select") as HTMLSelectElement | null;
+  const scatterYSelect = document.getElementById("scatter-y-select") as HTMLSelectElement | null;
 
   if (
     !canvas ||
@@ -494,7 +541,9 @@ async function main(): Promise<void> {
     !legendUpButton ||
     !legendDownButton ||
     !historyFilesInput ||
-    !progressFileInput
+    !progressFileInput ||
+    !scatterXSelect ||
+    !scatterYSelect
   ) {
     throw new Error("App shell is missing required DOM nodes.");
   }
@@ -511,6 +560,8 @@ async function main(): Promise<void> {
     setError(message)
   );
   await renderer.initialize();
+  populateScatterMetricSelect(scatterXSelect, DEFAULT_SCATTER_X_METRIC);
+  populateScatterMetricSelect(scatterYSelect, DEFAULT_SCATTER_Y_METRIC);
   updateControlNote((viewSelect.value ?? "profileOverview") as GraphView);
   renderAwaitingGeneration(state, renderer);
 
@@ -520,6 +571,8 @@ async function main(): Promise<void> {
     loadProgressFileButton.disabled = disabled;
     generateGraphButton.disabled = disabled;
     viewSelect.disabled = disabled;
+    scatterXSelect.disabled = disabled;
+    scatterYSelect.disabled = disabled;
     if (disabled) {
       topNInput.disabled = true;
       minSupportInput.disabled = true;
@@ -674,6 +727,24 @@ async function main(): Promise<void> {
   minSupportInput.addEventListener("change", () => {
     renderAwaitingGeneration(state, renderer, "Graph settings changed. Click Generate Graph to refresh the canvas.");
   });
+  const handleScatterMetricChange = (): void => {
+    if ((viewSelect.value as GraphView) !== "runScatter") {
+      return;
+    }
+
+    if (hasSelectedAnalyticsFiles(state)) {
+      buildAndRenderCurrentView(state, renderer);
+      return;
+    }
+
+    renderAwaitingGeneration(
+      state,
+      renderer,
+      "Scatter variables changed. Load data to generate the selected view."
+    );
+  };
+  scatterXSelect.addEventListener("change", handleScatterMetricChange);
+  scatterYSelect.addEventListener("change", handleScatterMetricChange);
 }
 
 void main();

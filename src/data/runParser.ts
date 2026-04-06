@@ -10,12 +10,97 @@ interface RawPlayer {
   relics?: RawRelic[];
 }
 
+interface RawMapPointPlayerStat {
+  max_hp?: unknown;
+}
+
+interface RawRoomRecord {
+  model_id?: unknown;
+  room_type?: unknown;
+}
+
+interface RawMapPoint {
+  map_point_type?: unknown;
+  player_stats?: RawMapPointPlayerStat[];
+  rooms?: RawRoomRecord[];
+}
+
 interface RawRunRecord {
   start_time?: unknown;
   win?: unknown;
   was_abandoned?: unknown;
   killed_by_encounter?: unknown;
+  map_point_history?: unknown;
   players?: RawPlayer[];
+}
+
+function numberOrDefault(value: unknown, defaultValue: number = 0): number {
+  return typeof value === "number" && Number.isFinite(value) ? value : defaultValue;
+}
+
+function flattenMapPointHistory(rawHistory: unknown): RawMapPoint[] {
+  const points: RawMapPoint[] = [];
+
+  const visit = (value: unknown): void => {
+    if (!Array.isArray(value)) {
+      return;
+    }
+
+    for (const entry of value) {
+      if (Array.isArray(entry)) {
+        visit(entry);
+        continue;
+      }
+
+      if (entry && typeof entry === "object") {
+        points.push(entry as RawMapPoint);
+      }
+    }
+  };
+
+  visit(rawHistory);
+  return points;
+}
+
+function isCombatRoom(room: RawRoomRecord): boolean {
+  const roomType = typeof room.room_type === "string" ? room.room_type : "";
+  const modelId = typeof room.model_id === "string" ? room.model_id : "";
+  return (roomType === "monster" || roomType === "elite" || roomType === "boss") && modelId.startsWith("ENCOUNTER.");
+}
+
+function isEliteRoom(room: RawRoomRecord): boolean {
+  const roomType = typeof room.room_type === "string" ? room.room_type : "";
+  const modelId = typeof room.model_id === "string" ? room.model_id : "";
+  return roomType === "elite" || modelId.endsWith("_ELITE");
+}
+
+function extractRunMetrics(rawHistory: unknown): Pick<
+  RunSummary,
+  "floorsClimbed" | "elitesEncountered" | "overallEncounters" | "restSitesVisited" | "maxHealth"
+> {
+  const points = flattenMapPointHistory(rawHistory);
+  const rooms = points.flatMap((point) => (Array.isArray(point.rooms) ? point.rooms : []));
+  const playerStats = points.flatMap((point) =>
+    Array.isArray(point.player_stats) ? point.player_stats : []
+  );
+
+  return {
+    floorsClimbed: points.length,
+    elitesEncountered: rooms.filter((room) => isEliteRoom(room)).length,
+    overallEncounters: rooms.filter((room) => isCombatRoom(room)).length,
+    restSitesVisited: points.filter((point) => {
+      if (point.map_point_type === "rest_site") {
+        return true;
+      }
+
+      const pointRooms = Array.isArray(point.rooms) ? point.rooms : [];
+      return pointRooms.some((room) => room.room_type === "rest_site");
+    }).length,
+    maxHealth: playerStats.reduce(
+      (highest, stat) => Math.max(highest, numberOrDefault(stat.max_hp)),
+      0
+    ),
+  };
 }
 
 function extractRunId(rawRun: RawRunRecord, fileName: string): string {
@@ -51,6 +136,7 @@ export function normalizeRunRecord(rawRun: unknown, fileName: string): RunSummar
         )
       )
     : [];
+  const runMetrics = extractRunMetrics(record.map_point_history);
 
   return {
     runId: extractRunId(record, fileName),
@@ -61,6 +147,11 @@ export function normalizeRunRecord(rawRun: unknown, fileName: string): RunSummar
     killedByEncounter:
       typeof record.killed_by_encounter === "string" ? record.killed_by_encounter : null,
     relicIdsExcludingStarter,
+    floorsClimbed: runMetrics.floorsClimbed,
+    elitesEncountered: runMetrics.elitesEncountered,
+    overallEncounters: runMetrics.overallEncounters,
+    restSitesVisited: runMetrics.restSitesVisited,
+    maxHealth: runMetrics.maxHealth,
   };
 }
 

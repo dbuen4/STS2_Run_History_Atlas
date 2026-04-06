@@ -10,11 +10,17 @@ import {
   ProgressEncounterStat,
   RankingEntry,
   RunSummary,
+  ScatterMetricId,
 } from "../types";
 import { getBossImageUrl, isBossEncounterId } from "../bossImageCatalog";
 import { getCardStatsCharacterIdForPool } from "../cardStatsSectors";
 import { getCardPool } from "../cardClassCatalog";
 import { getCardImageUrl } from "../cardImageCatalog";
+import {
+  DEFAULT_SCATTER_X_METRIC,
+  DEFAULT_SCATTER_Y_METRIC,
+  getScatterMetricDefinition,
+} from "./runScatterMetrics";
 import { getEncounterImageUrl } from "../encounterImageCatalog";
 import { getRelicImageUrl } from "../relicImageCatalog";
 import { assignGraphNodeColors } from "../nodePalette";
@@ -135,7 +141,10 @@ function isTrackedEncounterStatsId(encounterId: string): boolean {
 }
 
 function makeMissingProgressGraph(view: GraphView, runCount: number): GraphDataset {
-  const viewMeta: Record<Exclude<GraphView, "bossDeaths" | "relicWinRate">, { title: string; subtitle: string }> =
+  const viewMeta: Record<
+    Extract<GraphView, "profileOverview" | "cardStats" | "encounterStats">,
+    { title: string; subtitle: string }
+  > =
     {
       profileOverview: {
         title: "Profile Overview",
@@ -174,8 +183,14 @@ function makeMissingProgressGraph(view: GraphView, runCount: number): GraphDatas
   };
 }
 
-function makeMissingRunGraph(view: Extract<GraphView, "bossDeaths" | "relicWinRate">, hasProgress: boolean): GraphDataset {
-  const viewMeta: Record<Extract<GraphView, "bossDeaths" | "relicWinRate">, { title: string; subtitle: string }> = {
+function makeMissingRunGraph(
+  view: Extract<GraphView, "bossDeaths" | "relicWinRate" | "runScatter">,
+  hasProgress: boolean
+): GraphDataset {
+  const viewMeta: Record<
+    Extract<GraphView, "bossDeaths" | "relicWinRate" | "runScatter">,
+    { title: string; subtitle: string }
+  > = {
     bossDeaths: {
       title: "Boss Deaths",
       subtitle:
@@ -185,6 +200,11 @@ function makeMissingRunGraph(view: Extract<GraphView, "bossDeaths" | "relicWinRa
       title: "Relic Win Rate",
       subtitle:
         "Relic Win Rate is built from completed `.run` history files, not from progress.save alone.",
+    },
+    runScatter: {
+      title: "Run Scatter Plot",
+      subtitle:
+        "Run Scatter Plot needs `.run` history files so it can compare per-run values like floors climbed, elites, rests, and max health.",
     },
   };
 
@@ -200,12 +220,76 @@ function makeMissingRunGraph(view: Extract<GraphView, "bossDeaths" | "relicWinRa
       { label: "Parsed Runs", value: "0" },
       { label: "progress.save", value: hasProgress ? "Loaded" : "Missing" },
       { label: "Action", value: "Load History Files" },
-      { label: "Views Locked", value: "2" },
+      { label: "Views Locked", value: "3" },
     ],
     warnings: [
-      "No `.run` history files were loaded. Boss Deaths and Relic Win Rate both require the `history` folder.",
+      "No `.run` history files were loaded. Boss Deaths, Relic Win Rate, and Run Scatter Plot all require the `history` folder.",
     ],
   };
+}
+
+function formatScatterMetricValue(value: number): string {
+  return Number.isInteger(value) ? String(value) : value.toFixed(2).replace(/\.?0+$/, "");
+}
+
+function getRunOutcomeLabel(run: RunSummary): string {
+  if (run.wasAbandoned) {
+    return "Abandoned";
+  }
+
+  return run.win ? "Win" : "Loss";
+}
+
+function getRunOutcomeColor(run: RunSummary): [number, number, number, number] {
+  if (run.wasAbandoned) {
+    return COLORS.abandoned;
+  }
+
+  return run.win ? COLORS.win : COLORS.loss;
+}
+
+function scaleScatterValue(
+  value: number,
+  minValue: number,
+  maxValue: number,
+  minWorld: number,
+  maxWorld: number
+): number {
+  if (Math.abs(maxValue - minValue) < 0.0001) {
+    return (minWorld + maxWorld) / 2;
+  }
+
+  const normalized = (value - minValue) / (maxValue - minValue);
+  return minWorld + normalized * (maxWorld - minWorld);
+}
+
+function computePearsonCorrelation(points: Array<{ x: number; y: number }>): number | null {
+  if (points.length < 2) {
+    return null;
+  }
+
+  const sumX = points.reduce((sum, point) => sum + point.x, 0);
+  const sumY = points.reduce((sum, point) => sum + point.y, 0);
+  const meanX = sumX / points.length;
+  const meanY = sumY / points.length;
+
+  let numerator = 0;
+  let xVariance = 0;
+  let yVariance = 0;
+
+  for (const point of points) {
+    const deltaX = point.x - meanX;
+    const deltaY = point.y - meanY;
+    numerator += deltaX * deltaY;
+    xVariance += deltaX * deltaX;
+    yVariance += deltaY * deltaY;
+  }
+
+  if (xVariance <= 0.0000001 || yVariance <= 0.0000001) {
+    return null;
+  }
+
+  return numerator / Math.sqrt(xVariance * yVariance);
 }
 
 function buildBossGraph(runs: RunSummary[], topN: number, hasProgress: boolean): GraphDataset {
@@ -755,6 +839,130 @@ function buildEncounterStatsGraph(loadResult: LoadResult, topN: number): GraphDa
   };
 }
 
+function buildRunScatterGraph(
+  runs: RunSummary[],
+  xMetric: ScatterMetricId,
+  yMetric: ScatterMetricId,
+  hasProgress: boolean
+): GraphDataset {
+  if (runs.length === 0) {
+    return makeMissingRunGraph("runScatter", hasProgress);
+  }
+
+  const xAxis = getScatterMetricDefinition(xMetric);
+  const yAxis = getScatterMetricDefinition(yMetric);
+  const points = runs.map((run) => ({
+    run,
+    xValue: xAxis.getValue(run),
+    yValue: yAxis.getValue(run),
+  }));
+  const xValues = points.map((point) => point.xValue);
+  const yValues = points.map((point) => point.yValue);
+  const xMin = Math.min(...xValues);
+  const xMax = Math.max(...xValues);
+  const yMin = Math.min(...yValues);
+  const yMax = Math.max(...yValues);
+  const worldBounds = {
+    minX: -0.84,
+    maxX: 0.84,
+    minY: -0.84,
+    maxY: 0.84,
+  };
+
+  const fixedPositions = points.map((point) => ({
+    x: scaleScatterValue(point.xValue, xMin, xMax, worldBounds.minX, worldBounds.maxX),
+    y: scaleScatterValue(point.yValue, yMin, yMax, worldBounds.minY, worldBounds.maxY),
+  }));
+  const nodes: GraphNode[] = points.map((point, index) => ({
+    id: `run:${point.run.runId}:${index}`,
+    label: point.run.sourceName,
+    kind: "stat",
+    value: point.yValue,
+    secondaryValue: point.xValue,
+    radius: 0.048,
+    layoutRadius: 0.048,
+    color: getRunOutcomeColor(point.run),
+  }));
+  const correlation = computePearsonCorrelation(
+    points.map((point) => ({
+      x: point.xValue,
+      y: point.yValue,
+    }))
+  );
+  const ranking: RankingEntry[] = [...points]
+    .sort((left, right) => {
+      const yDifference = right.yValue - left.yValue;
+      if (yDifference !== 0) {
+        return yDifference;
+      }
+
+      const xDifference = right.xValue - left.xValue;
+      if (xDifference !== 0) {
+        return xDifference;
+      }
+
+      return left.run.sourceName.localeCompare(right.run.sourceName);
+    })
+    .map((point) => ({
+      id: point.run.runId,
+      label: `${humanizeToken(point.run.character)} · ${point.run.sourceName}`,
+      valueLabel: `${yAxis.label}: ${formatScatterMetricValue(point.yValue)}`,
+      detail: `${xAxis.label}: ${formatScatterMetricValue(point.xValue)} · ${getRunOutcomeLabel(point.run)}`,
+    }));
+
+  const warnings: string[] = [];
+  if (xMetric === yMetric) {
+    warnings.push("The same metric is selected for both axes, so every run will lie on a diagonal.");
+  }
+  if (correlation === null) {
+    warnings.push(
+      runs.length < 2
+        ? "At least two parsed runs are needed before a correlation value can be calculated."
+        : "One of the selected axes has no spread in the current runs, so correlation is unavailable."
+    );
+  }
+
+  return {
+    view: "runScatter",
+    title: "Run Scatter Plot",
+    subtitle: `Comparing ${xAxis.label} on the x-axis against ${yAxis.label} on the y-axis across parsed run-history files.`,
+    nodes,
+    edges: [],
+    fixedPositions,
+    scatterPlot: {
+      xAxis: {
+        metric: xMetric,
+        label: xAxis.label,
+        minValue: xMin,
+        maxValue: xMax,
+        minLabel: formatScatterMetricValue(xMin),
+        maxLabel: formatScatterMetricValue(xMax),
+      },
+      yAxis: {
+        metric: yMetric,
+        label: yAxis.label,
+        minValue: yMin,
+        maxValue: yMax,
+        minLabel: formatScatterMetricValue(yMin),
+        maxLabel: formatScatterMetricValue(yMax),
+      },
+      correlation,
+      worldBounds,
+    },
+    ranking,
+    summaryCards: [
+      { label: "Runs Plotted", value: String(runs.length) },
+      { label: "X Axis", value: xAxis.label },
+      { label: "Y Axis", value: yAxis.label },
+      {
+        label: "Correlation",
+        value: correlation === null ? "Unavailable" : `r = ${correlation.toFixed(2)}`,
+      },
+    ],
+    warnings,
+  };
+}
+
 export function buildGraphDataset(
   view: GraphView,
   loadResult: LoadResult,
@@ -777,6 +985,13 @@ export function buildGraphDataset(
         return buildCardStatsGraph(loadResult, options.topN, options.minSupport);
       case "encounterStats":
         return buildEncounterStatsGraph(loadResult, options.topN);
+      case "runScatter":
+        return buildRunScatterGraph(
+          loadResult.runs,
+          options.scatterXMetric ?? DEFAULT_SCATTER_X_METRIC,
+          options.scatterYMetric ?? DEFAULT_SCATTER_Y_METRIC,
+          loadResult.progress !== null
+        );
     }
   })();
 

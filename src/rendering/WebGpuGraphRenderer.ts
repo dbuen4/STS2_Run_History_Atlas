@@ -40,6 +40,18 @@ interface CardStatsGuideBinding {
   wedge: HTMLDivElement;
 }
 
+interface ScatterGuideBinding {
+  metadata: NonNullable<GraphDataset["scatterPlot"]>;
+  xAxisLine: HTMLDivElement;
+  yAxisLine: HTMLDivElement;
+  xAxisLabel: HTMLDivElement;
+  yAxisLabel: HTMLDivElement;
+  xMinLabel: HTMLDivElement;
+  xMaxLabel: HTMLDivElement;
+  yMinLabel: HTMLDivElement;
+  yMaxLabel: HTMLDivElement;
+}
+
 const SHOW_NODE_LABELS = false;
 const ENABLE_EDGE_RENDERING = true;
 const NODE_STRIDE_FLOATS = 8;
@@ -164,6 +176,9 @@ function getInitialPositions(graph: GraphDataset): Array<{ x: number; y: number 
   const nodeCount = nodes.length;
   if (nodeCount === 0) return [];
   if (nodeCount === 1) return [{ x: 0, y: 0 }];
+  if (graph.fixedPositions && graph.fixedPositions.length === nodeCount) {
+    return graph.fixedPositions.map((position) => ({ x: position.x, y: position.y }));
+  }
 
   if (graph.view === "cardStats") {
     return getCardStatsPositions(graph);
@@ -283,6 +298,7 @@ export class WebGpuGraphRenderer {
   private animationHandle: number | null = null;
   private guideBindings: CardStatsGuideBinding[] = [];
   private guideWorldRadius: number = 0;
+  private scatterGuideBinding: ScatterGuideBinding | null = null;
   private imageBindings: ImageBinding[] = [];
   private labelBindings: LabelBinding[] = [];
   private nodeSnapshot: Float32Array = new Float32Array();
@@ -442,9 +458,10 @@ export class WebGpuGraphRenderer {
     );
   }
 
-  private clearCardStatsGuides(): void {
+  private clearGuideOverlays(): void {
     this.guideBindings = [];
     this.guideWorldRadius = 0;
+    this.scatterGuideBinding = null;
     if (this.guideLayer) {
       this.guideLayer.replaceChildren();
       this.guideLayer.hidden = true;
@@ -461,9 +478,11 @@ export class WebGpuGraphRenderer {
     }
 
     if (graph.view !== "cardStats") {
-      this.clearCardStatsGuides();
+      this.clearGuideOverlays();
       return;
     }
+
+    this.clearGuideOverlays();
 
     const guideBindings = getCardStatsSectorGuides().map((guide) => {
       const wedge = document.createElement("div");
@@ -497,6 +516,59 @@ export class WebGpuGraphRenderer {
       ...guideBindings.map((binding) => binding.label)
     );
     this.renderCardStatsGuides();
+  }
+
+  private createScatterGuides(graph: GraphDataset): void {
+    if (!this.guideLayer) {
+      return;
+    }
+
+    if (graph.view !== "runScatter" || !graph.scatterPlot) {
+      this.clearGuideOverlays();
+      return;
+    }
+
+    this.clearGuideOverlays();
+
+    const createLine = (): HTMLDivElement => {
+      const element = document.createElement("div");
+      element.className = "scatter-guide-line";
+      return element;
+    };
+    const createLabel = (className: string, textContent: string): HTMLDivElement => {
+      const element = document.createElement("div");
+      element.className = className;
+      element.textContent = textContent;
+      return element;
+    };
+
+    this.scatterGuideBinding = {
+      metadata: graph.scatterPlot,
+      xAxisLine: createLine(),
+      yAxisLine: createLine(),
+      xAxisLabel: createLabel("scatter-guide-label", graph.scatterPlot.xAxis.label),
+      yAxisLabel: createLabel(
+        "scatter-guide-label scatter-guide-label-vertical",
+        graph.scatterPlot.yAxis.label
+      ),
+      xMinLabel: createLabel("scatter-guide-value", graph.scatterPlot.xAxis.minLabel),
+      xMaxLabel: createLabel("scatter-guide-value", graph.scatterPlot.xAxis.maxLabel),
+      yMinLabel: createLabel("scatter-guide-value", graph.scatterPlot.yAxis.minLabel),
+      yMaxLabel: createLabel("scatter-guide-value", graph.scatterPlot.yAxis.maxLabel),
+    };
+
+    this.guideLayer.hidden = false;
+    this.guideLayer.replaceChildren(
+      this.scatterGuideBinding.xAxisLine,
+      this.scatterGuideBinding.yAxisLine,
+      this.scatterGuideBinding.xAxisLabel,
+      this.scatterGuideBinding.yAxisLabel,
+      this.scatterGuideBinding.xMinLabel,
+      this.scatterGuideBinding.xMaxLabel,
+      this.scatterGuideBinding.yMinLabel,
+      this.scatterGuideBinding.yMaxLabel
+    );
+    this.renderScatterGuides();
   }
 
   private renderCardStatsGuides(): void {
@@ -548,6 +620,47 @@ export class WebGpuGraphRenderer {
       binding.label.style.left = `${labelCenter.x}px`;
       binding.label.style.top = `${labelCenter.y}px`;
     }
+  }
+
+  private positionGuideLine(element: HTMLDivElement, start: Point, end: Point): void {
+    const dx = end.x - start.x;
+    const dy = end.y - start.y;
+    const length = Math.hypot(dx, dy);
+
+    element.style.left = `${start.x}px`;
+    element.style.top = `${start.y}px`;
+    element.style.width = `${length}px`;
+    element.style.transform = `translateY(-50%) rotate(${Math.atan2(dy, dx)}rad)`;
+  }
+
+  private renderScatterGuides(): void {
+    if (!this.guideLayer || !this.scatterGuideBinding) {
+      return;
+    }
+
+    const { worldBounds } = this.scatterGuideBinding.metadata;
+    const bottomLeft = worldToCanvas(worldBounds.minX, worldBounds.minY, this.camera, this.canvas);
+    const bottomRight = worldToCanvas(worldBounds.maxX, worldBounds.minY, this.camera, this.canvas);
+    const topLeft = worldToCanvas(worldBounds.minX, worldBounds.maxY, this.camera, this.canvas);
+    const xMid = (bottomLeft.x + bottomRight.x) / 2;
+    const yMid = (bottomLeft.y + topLeft.y) / 2;
+
+    this.positionGuideLine(this.scatterGuideBinding.xAxisLine, bottomLeft, bottomRight);
+    this.positionGuideLine(this.scatterGuideBinding.yAxisLine, bottomLeft, topLeft);
+
+    this.scatterGuideBinding.xAxisLabel.style.left = `${xMid}px`;
+    this.scatterGuideBinding.xAxisLabel.style.top = `${Math.max(bottomLeft.y, bottomRight.y) + 18}px`;
+    this.scatterGuideBinding.yAxisLabel.style.left = `${topLeft.x - 28}px`;
+    this.scatterGuideBinding.yAxisLabel.style.top = `${yMid}px`;
+
+    this.scatterGuideBinding.xMinLabel.style.left = `${bottomLeft.x}px`;
+    this.scatterGuideBinding.xMinLabel.style.top = `${Math.max(bottomLeft.y, bottomRight.y) + 2}px`;
+    this.scatterGuideBinding.xMaxLabel.style.left = `${bottomRight.x}px`;
+    this.scatterGuideBinding.xMaxLabel.style.top = `${Math.max(bottomLeft.y, bottomRight.y) + 2}px`;
+    this.scatterGuideBinding.yMinLabel.style.left = `${topLeft.x - 8}px`;
+    this.scatterGuideBinding.yMinLabel.style.top = `${bottomLeft.y}px`;
+    this.scatterGuideBinding.yMaxLabel.style.left = `${topLeft.x - 8}px`;
+    this.scatterGuideBinding.yMaxLabel.style.top = `${topLeft.y}px`;
   }
 
   private clearLabels(): void {
@@ -676,6 +789,27 @@ export class WebGpuGraphRenderer {
     }
   }
 
+  private applyCameraFitToBounds(minX: number, maxX: number, minY: number, maxY: number): void {
+    const centerX = (minX + maxX) / 2;
+    const centerY = (minY + maxY) / 2;
+    const spanX = Math.max(maxX - minX, 0.32);
+    const spanY = Math.max(maxY - minY, 0.32);
+    const paddedSpan = Math.max(spanX, spanY) * 0.62;
+
+    this.camera.x = centerX;
+    this.camera.y = centerY;
+    this.camera.zoom = clamp(paddedSpan, 0.18, 8);
+    this.camera.targetX = centerX;
+    this.camera.targetY = centerY;
+    this.camera.targetZoom = this.camera.zoom;
+    this.homeCamera = {
+      x: centerX,
+      y: centerY,
+      zoom: this.camera.zoom,
+    };
+    this.updateCameraBuffer();
+  }
+
   private applyCameraFitFromNodeData(nodeData: Float32Array, nodeCount: number): void {
     if (nodeData.length === 0 || nodeCount === 0) {
       return;
@@ -697,24 +831,7 @@ export class WebGpuGraphRenderer {
       maxY = Math.max(maxY, worldY + layoutRadius);
     }
 
-    const centerX = (minX + maxX) / 2;
-    const centerY = (minY + maxY) / 2;
-    const spanX = Math.max(maxX - minX, 0.32);
-    const spanY = Math.max(maxY - minY, 0.32);
-    const paddedSpan = Math.max(spanX, spanY) * 0.62;
-
-    this.camera.x = centerX;
-    this.camera.y = centerY;
-    this.camera.zoom = clamp(paddedSpan, 0.18, 8);
-    this.camera.targetX = centerX;
-    this.camera.targetY = centerY;
-    this.camera.targetZoom = this.camera.zoom;
-    this.homeCamera = {
-      x: centerX,
-      y: centerY,
-      zoom: this.camera.zoom,
-    };
-    this.updateCameraBuffer();
+    this.applyCameraFitToBounds(minX, maxX, minY, maxY);
   }
 
   private queueNodeReadback(commandEncoder: GPUCommandEncoder): boolean {
@@ -757,6 +874,7 @@ export class WebGpuGraphRenderer {
           }
         }
         this.renderCardStatsGuides();
+        this.renderScatterGuides();
         this.renderLabels();
       })
       .catch(() => {
@@ -786,6 +904,7 @@ export class WebGpuGraphRenderer {
     this.camera.lastMouseY = 0;
     this.updateCameraBuffer();
     this.renderCardStatsGuides();
+    this.renderScatterGuides();
     this.renderLabels();
   }
 
@@ -818,7 +937,7 @@ export class WebGpuGraphRenderer {
       this.autoFitWarmupFrames = 0;
       this.autoFitReadbacksRemaining = 0;
       this.showEdges = false;
-      this.clearCardStatsGuides();
+      this.clearGuideOverlays();
       this.clearLabels();
       this.resetCamera();
       return;
@@ -840,8 +959,6 @@ export class WebGpuGraphRenderer {
           ),
           1.8
         ) + 0.55;
-    } else {
-      this.clearCardStatsGuides();
     }
     const nodeData = new Float32Array(graph.nodes.length * NODE_STRIDE_FLOATS);
     graph.nodes.forEach((node, index) => {
@@ -856,9 +973,22 @@ export class WebGpuGraphRenderer {
       nodeData[offset + 7] = node.color[3];
     });
     this.nodeSnapshot = nodeData.slice();
-    this.applyCameraFitFromNodeData(this.nodeSnapshot, graph.nodes.length);
+    if (graph.view === "runScatter" && graph.scatterPlot) {
+      this.applyCameraFitToBounds(
+        graph.scatterPlot.worldBounds.minX,
+        graph.scatterPlot.worldBounds.maxX,
+        graph.scatterPlot.worldBounds.minY,
+        graph.scatterPlot.worldBounds.maxY
+      );
+    } else {
+      this.applyCameraFitFromNodeData(this.nodeSnapshot, graph.nodes.length);
+    }
     if (graph.view === "cardStats") {
       this.createCardStatsGuides(graph, guideWorldRadius, labelAnchorBySectorId);
+    } else if (graph.view === "runScatter") {
+      this.createScatterGuides(graph);
+    } else {
+      this.clearGuideOverlays();
     }
     this.createLabels(graph.nodes);
     this.showEdges = graph.showEdges ?? false;
@@ -929,9 +1059,9 @@ export class WebGpuGraphRenderer {
     this.frameCount = 0;
     this.layout = null;
     this.layoutActive = false;
-    this.autoFitEnabled = true;
-    this.autoFitWarmupFrames = 2;
-    this.autoFitReadbacksRemaining = 12;
+    this.autoFitEnabled = graph.view !== "runScatter";
+    this.autoFitWarmupFrames = graph.view === "runScatter" ? 0 : 2;
+    this.autoFitReadbacksRemaining = graph.view === "runScatter" ? 0 : 12;
     this.renderLabels();
   }
 
@@ -1006,6 +1136,7 @@ export class WebGpuGraphRenderer {
     }
     if (cameraChanged || this.guideBindings.length > 0 || this.labelBindings.length > 0 || this.imageBindings.length > 0) {
       this.renderCardStatsGuides();
+      this.renderScatterGuides();
       this.renderLabels();
     }
   }
