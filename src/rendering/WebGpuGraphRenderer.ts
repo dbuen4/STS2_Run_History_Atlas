@@ -157,6 +157,10 @@ function getInitialPositions(graph: GraphDataset): Array<{ x: number; y: number 
     return getCardStatsPositions(graph);
   }
 
+  if (graph.view === "profileOverview") {
+    return getProfileOverviewPositions(nodes);
+  }
+
   return getSpiralPositions(nodes);
 }
 
@@ -218,6 +222,26 @@ function getSpiralPositions(nodes: GraphNode[]): Array<{ x: number; y: number }>
     positions[nodeIdx] = {
       x: r * Math.cos(angle),
       y: r * Math.sin(angle),
+    };
+  }
+
+  return positions;
+}
+
+/**
+ * Profile Overview: evenly space nodes in a single horizontal row.
+ */
+function getProfileOverviewPositions(nodes: GraphNode[]): Array<{ x: number; y: number }> {
+  const nodeCount = nodes.length;
+  const positions = new Array<{ x: number; y: number }>(nodeCount);
+  const maxLayoutRadius = Math.max(...nodes.map((n) => n.layoutRadius));
+  const spacing = maxLayoutRadius * 2.8;
+  const totalWidth = (nodeCount - 1) * spacing;
+
+  for (let i = 0; i < nodeCount; i++) {
+    positions[i] = {
+      x: -totalWidth / 2 + i * spacing,
+      y: 0,
     };
   }
 
