@@ -5,6 +5,15 @@ struct Node {
     color: vec4f,
 };
 
+// Per-node anchor: the position this node is gravitationally attracted toward,
+// and a group ID so that only same-group nodes interact with each other.
+// Struct size is 16 bytes (vec2f = 8, u32 = 4, pad u32 = 4).
+struct NodeAnchor {
+    pos: vec2f,
+    groupId: u32,
+    _pad: u32,
+};
+
 struct Uniforms {
     nodesLength: u32,
     magnitude: f32,
@@ -15,6 +24,7 @@ struct Uniforms {
 @group(0) @binding(0) var<storage, read_write> nodes: array<Node>;
 @group(0) @binding(1) var<storage, read> adjacencyMatrix: array<f32>;
 @group(0) @binding(2) var<uniform> uniforms: Uniforms;
+@group(0) @binding(3) var<storage, read> anchors: array<NodeAnchor>;
 
 @compute @workgroup_size(64, 1, 1)
 fn main(@builtin(global_invocation_id) globalId: vec3<u32>) {
@@ -25,9 +35,15 @@ fn main(@builtin(global_invocation_id) globalId: vec3<u32>) {
 
     var force = vec2f(0.0, 0.0);
     let current = nodes[nodeIndex];
+    let currentAnchor = anchors[nodeIndex];
 
     for (var i: u32 = 0u; i < uniforms.nodesLength; i = i + 1u) {
         if (i == nodeIndex) {
+            continue;
+        }
+        // Nodes in different groups (e.g. cards from different character sectors) do not
+        // interact, which naturally keeps them within their own region.
+        if (anchors[i].groupId != currentAnchor.groupId) {
             continue;
         }
 
@@ -52,7 +68,13 @@ fn main(@builtin(global_invocation_id) globalId: vec3<u32>) {
         }
     }
 
-    force += -current.pos * 0.014;
+    // Importance-weighted gravity toward this node's anchor position.
+    // For most views the anchor is the origin; for card stats it is the sector center,
+    // which keeps cards pulled into their own region.
+    // Quadratic scaling exaggerates the gap between top-ranked and lower-ranked nodes.
+    let fromAnchor = current.pos - currentAnchor.pos;
+    let importancePull = 0.012 + current.renderRadius * current.renderRadius * 0.28;
+    force += -fromAnchor * importancePull;
 
     let forceLength = length(force);
     if (forceLength > 0.0001) {

@@ -118,9 +118,10 @@ function makeCountNode(
   maxCount: number,
   color: [number, number, number, number],
   minRadius: number = 0.12,
-  maxRadius: number = 0.28
+  maxRadius: number = 0.28,
+  power: number = 0.5
 ): GraphNode {
-  const radius = squareRootRadius(count, maxCount || 1, minRadius, maxRadius);
+  const radius = squareRootRadius(count, maxCount || 1, minRadius, maxRadius, power);
   return withLayoutRadius({
     id,
     label,
@@ -326,8 +327,9 @@ function buildBossGraph(runs: RunSummary[], topN: number, hasProgress: boolean):
       entry.count,
       maxBossCount,
       COLORS.boss,
-      0.12,
-      0.28
+      0.08,
+      0.38,
+      1.5
     )
   );
   bossNodes.forEach((node) => {
@@ -445,7 +447,7 @@ function buildRelicGraph(
       kind: "relic" as const,
       value: stat.winRate,
       secondaryValue: stat.support,
-      radius: squareRootRadius(stat.winRate, maxRelicWinRate, 0.12, 0.28),
+      radius: squareRootRadius(stat.winRate, maxRelicWinRate, 0.08, 0.38, 1.5),
       color: COLORS.relic,
       imageUrl: getRelicImageUrl(stat.id),
     })
@@ -803,7 +805,7 @@ function buildEncounterStatsGraph(loadResult: LoadResult, topN: number): GraphDa
       kind: "encounter" as const,
       value: stat.losses,
       secondaryValue: stat.lossRate,
-      radius: squareRootRadius(stat.losses, maxEncounterLosses, 0.12, 0.28),
+      radius: squareRootRadius(stat.losses, maxEncounterLosses, 0.08, 0.38, 1.5),
       color: blendColor(COLORS.encounter, COLORS.loss, stat.lossRate),
       imageUrl: getEncounterImageUrl(stat.id),
     })

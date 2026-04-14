@@ -22,6 +22,12 @@ interface RenderNodeInput {
   color: [number, number, number, number];
 }
 
+interface NodeAnchorInput {
+  anchorX: number;
+  anchorY: number;
+  groupId: number;
+}
+
 interface LabelBinding {
   nodeIndex: number;
   element: HTMLDivElement;
@@ -59,6 +65,7 @@ const EDGE_STRIDE = 6; // sourceIndex(u32), targetIndex(u32), r(f32), g(f32), b(
 
 class ForceDirectedLayout {
   private readonly adjacencyMatrixBuffer: GPUBuffer;
+  private readonly anchorBuffer: GPUBuffer;
   private readonly computePipeline: GPUComputePipeline;
   private readonly bindGroup: GPUBindGroup;
   private readonly uniformBuffer: GPUBuffer;
@@ -69,7 +76,7 @@ class ForceDirectedLayout {
   private readonly coolingFactor: number = 0.985;
   private magnitude: number;
 
-  constructor(device: GPUDevice, nodeBuffer: GPUBuffer, nodes: RenderNodeInput[], edges: EdgeInput[], characterNodeCount: number = 0, gentleSettle: boolean = false) {
+  constructor(device: GPUDevice, nodeBuffer: GPUBuffer, nodes: RenderNodeInput[], edges: EdgeInput[], characterNodeCount: number = 0, gentleSettle: boolean = false, anchors?: NodeAnchorInput[]) {
     this.nodeCount = nodes.length;
     this.characterNodeCount = characterNodeCount;
     const maxLabelExpansion = Math.max(...nodes.map((node) => node.layoutRadius - node.radius), 0);
@@ -101,6 +108,30 @@ class ForceDirectedLayout {
     new Float32Array(this.adjacencyMatrixBuffer.getMappedRange()).set(adjacencyMatrix);
     this.adjacencyMatrixBuffer.unmap();
 
+    // Anchor buffer: 16 bytes per node (vec2f pos + u32 groupId + u32 pad).
+    // Defaults to all-zero (anchor at origin, group 0) when no anchors are supplied,
+    // which preserves the original behaviour for spiral and profile views.
+    const anchorData = new ArrayBuffer(Math.max(this.nodeCount * 16, 16));
+    if (anchors) {
+      const anchorF32 = new Float32Array(anchorData);
+      const anchorU32 = new Uint32Array(anchorData);
+      for (let i = 0; i < this.nodeCount; i++) {
+        const a = anchors[i];
+        if (a) {
+          anchorF32[i * 4 + 0] = a.anchorX;
+          anchorF32[i * 4 + 1] = a.anchorY;
+          anchorU32[i * 4 + 2] = a.groupId;
+        }
+      }
+    }
+    this.anchorBuffer = device.createBuffer({
+      size: anchorData.byteLength,
+      usage: GPUBufferUsage.STORAGE | GPUBufferUsage.COPY_DST,
+      mappedAtCreation: true,
+    });
+    new Uint8Array(this.anchorBuffer.getMappedRange()).set(new Uint8Array(anchorData));
+    this.anchorBuffer.unmap();
+
     this.uniformBuffer = device.createBuffer({
       size: 16,
       usage: GPUBufferUsage.UNIFORM | GPUBufferUsage.COPY_DST,
@@ -120,6 +151,7 @@ class ForceDirectedLayout {
         { binding: 0, resource: { buffer: nodeBuffer } },
         { binding: 1, resource: { buffer: this.adjacencyMatrixBuffer } },
         { binding: 2, resource: { buffer: this.uniformBuffer } },
+        { binding: 3, resource: { buffer: this.anchorBuffer } },
       ],
     });
 
@@ -946,8 +978,9 @@ export class WebGpuGraphRenderer {
     let positions = getInitialPositions(graph);
     let guideWorldRadius = 0;
     let labelAnchorBySectorId = new Map<string, Point>();
+    let cardStatsLayout: ReturnType<typeof buildCardStatsLayout> | null = null;
     if (graph.view === "cardStats") {
-      const cardStatsLayout = buildCardStatsLayout(graph);
+      cardStatsLayout = buildCardStatsLayout(graph);
       positions = cardStatsLayout.positions;
       labelAnchorBySectorId = new Map(
         cardStatsLayout.labelAnchors.map((anchor) => [anchor.id, anchor.position] as const)
@@ -1057,8 +1090,61 @@ export class WebGpuGraphRenderer {
     this.nodeCount = graph.nodes.length;
     this.edgeCount = graph.edges.length;
     this.frameCount = 0;
-    this.layout = null;
-    this.layoutActive = false;
+
+    // Enable force-directed layout for all views except the scatter plot
+    // (which has fixed data-driven positions).
+    if (graph.view !== "runScatter" && graph.nodes.length > 0) {
+      const renderNodes: RenderNodeInput[] = graph.nodes.map((node) => ({
+        id: node.id,
+        radius: node.radius,
+        layoutRadius: node.layoutRadius,
+        color: node.color,
+      }));
+      const layoutEdges: EdgeInput[] = graph.layoutEdges ?? graph.edges;
+
+      // Profile Overview: all nodes are characters, so disable the 10x character-pair
+      // repulsion — otherwise every node pushes every other node away too strongly.
+      const characterNodeCount =
+        graph.view === "profileOverview"
+          ? 0
+          : graph.nodes.filter((n) => n.kind === "character").length;
+
+      // Card Stats: build per-node anchor positions (sector centers) and group IDs so
+      // that cards are attracted toward their sector center and only interact with
+      // cards from the same character pool.
+      let nodeAnchors: NodeAnchorInput[] | undefined;
+      if (graph.view === "cardStats" && cardStatsLayout !== null) {
+        const anchorByNodeId = new Map<string, NodeAnchorInput>();
+        cardStatsLayout.groupLayouts.forEach((group, groupIndex) => {
+          for (const nodeId of group.nodeIds) {
+            anchorByNodeId.set(nodeId, {
+              anchorX: group.center.x,
+              anchorY: group.center.y,
+              groupId: groupIndex,
+            });
+          }
+        });
+        nodeAnchors = graph.nodes.map((node) => {
+          const a = anchorByNodeId.get(node.id);
+          return { anchorX: a?.anchorX ?? 0, anchorY: a?.anchorY ?? 0, groupId: a?.groupId ?? 0 };
+        });
+      }
+
+      this.layout = new ForceDirectedLayout(
+        this.device,
+        this.nodeBuffer!,
+        renderNodes,
+        layoutEdges,
+        characterNodeCount,
+        graph.view === "cardStats", // gentleSettle: card positions are already well-placed
+        nodeAnchors
+      );
+      this.layoutActive = true;
+    } else {
+      this.layout = null;
+      this.layoutActive = false;
+    }
+
     this.autoFitEnabled = graph.view !== "runScatter";
     this.autoFitWarmupFrames = graph.view === "runScatter" ? 0 : 2;
     this.autoFitReadbacksRemaining = graph.view === "runScatter" ? 0 : 12;

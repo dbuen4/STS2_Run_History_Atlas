@@ -722,6 +722,11 @@ async function main(): Promise<void> {
     );
   });
   topNInput.addEventListener("change", () => {
+    if (state.currentGraph !== null && hasSelectedAnalyticsFiles(state)) {
+      buildAndRenderCurrentView(state, renderer);
+      return;
+    }
+
     renderAwaitingGeneration(state, renderer, "Graph settings changed. Click Generate Graph to refresh the canvas.");
   });
   minSupportInput.addEventListener("change", () => {

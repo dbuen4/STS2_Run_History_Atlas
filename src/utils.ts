@@ -8,13 +8,14 @@ export function squareRootRadius(
   value: number,
   maxValue: number,
   minRadius: number = 0.05,
-  maxRadius: number = 0.15
+  maxRadius: number = 0.15,
+  power: number = 0.5
 ): number {
   if (maxValue <= 0 || value <= 0) {
     return minRadius;
   }
 
-  const normalized = Math.sqrt(value / maxValue);
+  const normalized = Math.pow(value / maxValue, power);
   return clamp(minRadius + normalized * (maxRadius - minRadius), minRadius, maxRadius);
 }
 
