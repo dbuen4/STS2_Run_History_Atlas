@@ -82,23 +82,16 @@ function getSelectedFiles(state: AppState): File[] {
     : [...state.selectedRunFiles];
 }
 
-async function listAnalyticsFiles(directory: FileSystemDirectoryHandle): Promise<File[]> {
-  const files: File[] = [];
-
-  for await (const handle of directory.values()) {
-    if (handle.kind === "directory") {
-      files.push(...(await listAnalyticsFiles(handle)));
-      continue;
-    }
-
-    const lowerName = handle.name.toLowerCase();
-    if (lowerName.endsWith(".run") || lowerName === "progress.save") {
-      files.push(await handle.getFile());
+function filterAnalyticsFiles(files: FileList | null): File[] {
+  const result: File[] = [];
+  for (const file of Array.from(files ?? [])) {
+    const lower = file.name.toLowerCase();
+    if (lower.endsWith(".run") || lower === "progress.save") {
+      result.push(file);
     }
   }
-
-  files.sort((left, right) => left.name.localeCompare(right.name));
-  return files;
+  result.sort((a, b) => a.name.localeCompare(b.name));
+  return result;
 }
 
 function setStatus(message: string): void {
@@ -522,6 +515,7 @@ async function main(): Promise<void> {
   const minSupportInput = document.getElementById("min-support-input") as HTMLInputElement | null;
   const legendUpButton = document.getElementById("legend-up-btn") as HTMLButtonElement | null;
   const legendDownButton = document.getElementById("legend-down-btn") as HTMLButtonElement | null;
+  const loadFolderInput = document.getElementById("load-folder-input") as HTMLInputElement | null;
   const historyFilesInput = document.getElementById("history-files-input") as HTMLInputElement | null;
   const progressFileInput = document.getElementById("progress-file-input") as HTMLInputElement | null;
   const scatterXSelect = document.getElementById("scatter-x-select") as HTMLSelectElement | null;
@@ -540,6 +534,7 @@ async function main(): Promise<void> {
     !minSupportInput ||
     !legendUpButton ||
     !legendDownButton ||
+    !loadFolderInput ||
     !historyFilesInput ||
     !progressFileInput ||
     !scatterXSelect ||
@@ -582,49 +577,32 @@ async function main(): Promise<void> {
     updateControlNote(viewSelect.value as GraphView);
   };
 
-  loadButton.addEventListener("click", async () => {
-    if (!window.showDirectoryPicker) {
-      setError("showDirectoryPicker is unavailable in this browser. Use Chromium or Edge on localhost.");
+  loadButton.addEventListener("click", () => {
+    loadFolderInput.click();
+  });
+
+  loadFolderInput.addEventListener("change", async () => {
+    const files = filterAnalyticsFiles(loadFolderInput.files);
+    loadFolderInput.value = "";
+
+    if (files.length === 0) {
+      clearSelectedFiles(state);
+      state.loadResult = createEmptyLoadResult();
+      setStatus("No .run files or progress.save file were found in the selected folder.");
+      renderAwaitingGeneration(state, renderer);
       return;
     }
 
-    setLoadingControlsDisabled(true);
+    setSelectedFilesFromList(state, files);
     setError(null);
-    setStatus("Choosing a folder...");
+    setLoadingControlsDisabled(true);
 
     try {
-      const directory = await window.showDirectoryPicker();
-      setStatus("Scanning .run files and progress.save...");
-      const files = await listAnalyticsFiles(directory);
-
-      if (files.length === 0) {
-        clearSelectedFiles(state);
-        state.loadResult = createEmptyLoadResult();
-        setStatus("No .run files or progress.save file were found in the selected folder.");
-        renderAwaitingGeneration(state, renderer);
-        return;
-      }
-
-      setSelectedFilesFromList(state, files);
       await parseCurrentSelection(state, renderer);
     } catch (error) {
       const message = error instanceof Error ? error.message : "Unknown folder-loading error";
-      const normalizedMessage = message.toLowerCase();
-
-      if (normalizedMessage.includes("abort")) {
-        setStatus("Folder selection cancelled.");
-      } else if (
-        normalizedMessage.includes("system files") ||
-        normalizedMessage.includes("sensitive")
-      ) {
-        setError(
-          "Chromium blocked that AppData folder because it is treated as sensitive. Use Load History Files for the .run files in the history folder, then Add progress.save for the profile stats."
-        );
-        setStatus("Folder load was blocked by the browser.");
-      } else {
-        setError(message);
-        setStatus("Folder load failed.");
-      }
+      setError(message);
+      setStatus("Folder load failed.");
     } finally {
       setLoadingControlsDisabled(false);
     }
