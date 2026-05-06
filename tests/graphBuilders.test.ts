@@ -391,6 +391,11 @@ describe("graphBuilders", () => {
     expect(cloakClaspNode?.imageUrl).toBeTruthy();
   });
 
+  it("maps fake relic ids to local relic images", () => {
+    expect(getRelicImageUrl("RELIC.FAKE_BLOOD_VIAL")).toBe(getRelicImageUrl("RELIC.BLOOD_VIAL"));
+    expect(getRelicImageUrl("RELIC.FAKE_MERCHANTS_RUG")).toBeTruthy();
+  });
+
   it("builds profile overview graphs from progress.save", () => {
     const graph = build("profileOverview", loadResult);
 
