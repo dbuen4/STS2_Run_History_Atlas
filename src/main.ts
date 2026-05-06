@@ -494,7 +494,7 @@ function parseFilesInWorker(files: File[]): Promise<LoadResult> {
 
     worker.addEventListener("error", (event) => {
       worker.terminate();
-      reject(new Error(event.message));
+      reject(new Error(event.message || "Worker failed to load. Check that all bundle chunks are deployed."));
     });
 
     worker.postMessage({

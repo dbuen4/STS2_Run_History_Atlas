@@ -363,13 +363,27 @@ export class WebGpuGraphRenderer {
       return;
     }
 
-    const adapter = await navigator.gpu.requestAdapter();
+    let adapter: GPUAdapter | null;
+    try {
+      adapter = await navigator.gpu.requestAdapter();
+    } catch (error) {
+      const message = error instanceof Error ? error.message : String(error);
+      this.noWebGpuMessage(`WebGPU adapter request failed: ${message}`);
+      return;
+    }
+
     if (!adapter) {
       this.noWebGpuMessage("WebGPU is present, but no compatible adapter was returned.");
       return;
     }
 
-    this.device = await adapter.requestDevice();
+    try {
+      this.device = await adapter.requestDevice();
+    } catch (error) {
+      const message = error instanceof Error ? error.message : String(error);
+      this.noWebGpuMessage(`WebGPU device request failed: ${message}`);
+      return;
+    }
     this.device.addEventListener("uncapturederror", (event) => {
       const message = event.error?.message ?? "Unknown WebGPU runtime error.";
       this.noWebGpuMessage(`WebGPU runtime error: ${message}`);
